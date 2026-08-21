@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.localbridge.client</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>python3</string>
+        <string>REPLACE_WITH_FULL_PATH_TO_mac_client.py</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/localbridge_mac.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/localbridge_mac_err.log</string>
+    <key>WorkingDirectory</key>
+    <string>REPLACE_WITH_FULL_PATH_TO_LocalBridge/mac</string>
+</dict>
+</plist>

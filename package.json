@@ -1,0 +1,35 @@
+{
+  "name": "localbridge",
+  "private": true,
+  "version": "0.2.0-beta.0",
+  "description": "Zero-config beta onboarding for LocalBridge clipboard sync.",
+  "scripts": {
+    "dev": "npm --workspace apps/web run dev",
+    "build": "npm --workspace apps/web run build",
+    "test": "npm run test:js && npm run test:python",
+    "test:js": "node --test services/pairing/tests/*.test.mjs packages/protocol/src/*.test.mjs packages/crypto/src/*.test.mjs",
+    "test:python": "PYTHONPATH=packages/shared python3 -m pytest packages/shared/tests",
+    "package:downloads": "bash build/package_downloads.sh",
+    "netlify:dev": "netlify dev"
+  },
+  "workspaces": [
+    "apps/web"
+  ],
+  "devDependencies": {
+    "@netlify/functions": "^2.8.2",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "typescript": "^5.5.4",
+    "vite": "^8.2.1"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
