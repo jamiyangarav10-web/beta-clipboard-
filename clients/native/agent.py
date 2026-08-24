@@ -381,7 +381,7 @@ def poll_backend_once():
                 state["hasCredentials"] = True
                 state["state"] = "PAIRED"
                 state["pairedDevice"] = credentials.get("paired_device", {})
-            start_sync()
+            restart_sync()
         elif existing.get("shared_secret"):
             refresh_state_from_disk()
             if not (sync_proc and sync_proc.poll() is None):
@@ -443,6 +443,12 @@ def start_sync():
             log("sync engine started pid=" + str(sync_proc.pid))
         except Exception as e:
             log("start_sync error: " + str(e))
+
+
+def restart_sync():
+    stop_sync()
+    time.sleep(0.5)
+    start_sync()
 
 
 def stop_sync():
@@ -557,7 +563,7 @@ class Handler(BaseHTTPRequestHandler):
                     state["hasCredentials"] = True
                     state["state"] = "PAIRED"
                     state["pairedDevice"] = credentials.get("paired_device", {})
-                start_sync()
+                restart_sync()
             self._send(code, resp)
             return
 

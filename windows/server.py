@@ -122,7 +122,15 @@ async def send_to_client(ws, message: dict) -> None:
 
 
 async def handle_client(websocket) -> None:
+    global cfg, LISTEN_HOST, LISTEN_PORT, ALLOWED_PEER, EXPECTED_SECRET, MAX_MESSAGE_BYTES
     global connected_peer, last_clipboard
+
+    cfg = merged_agent_config(ENV_PATH, role="windows")
+    LISTEN_HOST = cfg.get("listen_host", "")
+    LISTEN_PORT = int(cfg.get("port", os.getenv("LOCALBRIDGE_PORT", "8765")))
+    ALLOWED_PEER = cfg.get("allowed_peer", "")
+    EXPECTED_SECRET = cfg.get("secret", "")
+    MAX_MESSAGE_BYTES = int(cfg.get("max_clipboard_bytes", "1048576"))
 
     peer = websocket.remote_address[0] if websocket.remote_address else "unknown"
     log.info("Connection attempt from %s", peer)
