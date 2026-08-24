@@ -68,5 +68,5 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo LocalBridge is installed and running.
-echo Open https://localbridge-pairing-beta-163358.netlify.app/#connect to pair this device.
+echo Open https://clipboardbeta.netlify.app/#connect to pair this device.
 pause

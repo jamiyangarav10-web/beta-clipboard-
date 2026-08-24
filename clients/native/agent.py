@@ -41,7 +41,7 @@ CONTROL_HOST = os.environ.get("CONTROL_HOST", "127.0.0.1")
 SYNC_PORT = int(os.environ.get("SYNC_PORT", "8765"))
 BACKEND = os.environ.get(
     "BACKEND_BASE_URL",
-    "https://localbridge-pairing-beta-163358.netlify.app/.netlify/functions/pairing",
+    "https://clipboardbeta.netlify.app/.netlify/functions/pairing",
 )
 
 PLATFORM = "macos" if sys.platform == "darwin" else "windows"

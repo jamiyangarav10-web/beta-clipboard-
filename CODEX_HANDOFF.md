@@ -59,7 +59,7 @@ clients/native/agent.py was added afterward (not by you). It is the missing piec
 - Windows: package built and downloadable; the user must run setup_windows.bat on the
   Windows PC (installs deps, starts the agent). Not yet verified from the Mac side because
   the Windows peer's port 8765 was not up during testing.
-- Site deployed: https://localbridge-pairing-beta-163358.netlify.app
+- Site deployed: https://clipboardbeta.netlify.app
 
 ## Hard constraints / gotchas
 - The agent MUST run with the SYSTEM python3 (/usr/bin/python3 on macOS — it has

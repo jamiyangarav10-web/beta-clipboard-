@@ -22,7 +22,7 @@ LocalBridge for macOS
 
 1. Double-click setup_mac.command.
 2. If macOS blocks it, Control-click the file, choose Open, then approve.
-3. Open https://localbridge-pairing-beta-163358.netlify.app/#connect and pair this device.
+3. Open https://clipboardbeta.netlify.app/#connect and pair this device.
 
 The installer runs LocalBridge in the background at http://127.0.0.1:17833.
 EOF
@@ -37,7 +37,7 @@ cat > "$WORK_DIR/windows/LocalBridge-Windows/README.txt" <<'EOF'
 LocalBridge for Windows
 
 1. Run setup_windows.bat.
-2. Open https://localbridge-pairing-beta-163358.netlify.app/#connect and pair this device.
+2. Open https://clipboardbeta.netlify.app/#connect and pair this device.
 
 The installer runs LocalBridge in the background at http://127.0.0.1:17833 and
 adds it to your Windows Startup folder.
