@@ -1,14 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
-  Apple,
   ArrowRight,
   CheckCircle2,
   Clipboard,
   Copy,
   Download,
   Github,
-  Laptop,
   Link2,
   Lock,
   Monitor,
@@ -41,7 +39,21 @@ type Device = {
 
 type Language = "en" | "mn";
 
-const BACKEND_URL = "/.netlify/functions/pairing";
+const LOCAL_AGENT_URL = "http://127.0.0.1:17833";
+
+type AgentStatus = {
+  deviceId: string;
+  deviceName: string;
+  platform: string;
+  state: PairingState;
+  hasCredentials: boolean;
+  pairedDevice?: {
+    device_id?: string;
+    device_name?: string;
+    platform?: string;
+    direct_host?: string;
+  };
+};
 
 const COPY = {
   en: {
@@ -234,12 +246,15 @@ function App() {
     [devices, selectedDeviceId]
   );
   const pairedDevice = useMemo(() => {
+    if (devices.length === 2 && selectedDevice) {
+      return devices.find((device) => device.deviceId !== selectedDevice.deviceId) || null;
+    }
     if (!selectedDevice?.currentPairingId) return null;
     return devices.find(
       (device) => device.deviceId !== selectedDevice.deviceId && device.currentPairingId === selectedDevice.currentPairingId
     ) || null;
   }, [devices, selectedDevice]);
-  const effectiveState = selectedDevice?.state === "PAIRED" ? "CONNECTED" : state;
+  const effectiveState = selectedDevice?.state === "PAIRED" || selectedDevice?.state === "CONNECTED" ? "CONNECTED" : state;
   const connectionReady = Boolean(pairedDevice && (effectiveState === "PAIRED" || effectiveState === "CONNECTED"));
   const peerName = pairedDevice?.deviceName || (connectionReady ? t.pairedDevice : t.waitingPeer);
 
@@ -252,24 +267,40 @@ function App() {
     let mounted = true;
     const refreshDevices = async () => {
       try {
-        const response = await fetch(`${BACKEND_URL}/devices`, { cache: "no-store" });
-        const data = (await response.json()) as { devices: Device[] };
+        const response = await fetch(`${LOCAL_AGENT_URL}/api/status`, { cache: "no-store" });
+        const data = (await response.json()) as AgentStatus;
         if (!mounted) return;
-        const onlineDevices = data.devices || [];
+        const localDevice: Device = {
+          deviceId: data.deviceId,
+          deviceName: data.deviceName,
+          platform: data.platform,
+          state: data.state,
+        };
+        const onlineDevices = [localDevice];
+        if (data.pairedDevice?.device_id) {
+          onlineDevices.push({
+            deviceId: data.pairedDevice.device_id,
+            deviceName: data.pairedDevice.device_name || t.pairedDevice,
+            platform: data.pairedDevice.platform || "device",
+            directEndpoint: data.pairedDevice.direct_host ? `ws://${data.pairedDevice.direct_host}` : "",
+            state: data.state,
+          });
+        }
         setDevices(onlineDevices);
-        setSelectedDeviceId((current) => {
-          if (current && onlineDevices.some((device) => device.deviceId === current)) return current;
-          return onlineDevices[0]?.deviceId || "";
-        });
-        const activeDevice = onlineDevices.find((device) => device.deviceId === selectedDeviceId) || onlineDevices[0];
-        if (activeDevice?.state === "PAIRED") {
+        setSelectedDeviceId(data.deviceId);
+        if (data.state === "PAIRED" || data.state === "CONNECTED") {
           setState("CONNECTED");
           setMessage(t.pairedDone);
         } else {
-          setMessage(onlineDevices.length ? t.chooseDevice : t.startAgent);
+          setState(data.state || "UNPAIRED");
+          setMessage(t.chooseDevice);
         }
       } catch {
-        if (mounted) setMessage(t.backendError);
+        if (!mounted) return;
+        setDevices([]);
+        setSelectedDeviceId("");
+        setState("UNPAIRED");
+        setMessage(t.startAgent);
       }
     };
 
@@ -279,12 +310,12 @@ function App() {
       mounted = false;
       window.clearInterval(interval);
     };
-  }, [selectedDeviceId, t]);
+  }, [t]);
 
-  const callBackend = async <T,>(path: string, body?: unknown) => {
+  const callAgent = async <T,>(path: string, body?: unknown) => {
     setBusy(true);
     try {
-      const response = await fetch(`${BACKEND_URL}${path}`, {
+      const response = await fetch(`${LOCAL_AGENT_URL}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: body ? JSON.stringify(body) : "{}",
@@ -308,9 +339,7 @@ function App() {
   const createSession = async () => {
     if (!requireDevice()) return;
     try {
-      const data = await callBackend<{ pairingId: string; state: PairingState }>("/session", {
-        deviceId: selectedDeviceId,
-      });
+      const data = await callAgent<{ pairingId: string; state: PairingState }>("/api/pairing/session");
       setPairingId(data.pairingId);
       setJoinPairingId(data.pairingId);
       setState(data.state);
@@ -327,9 +356,8 @@ function App() {
       return;
     }
     try {
-      const data = await callBackend<{ pairingId: string; state: PairingState }>("/join", {
+      const data = await callAgent<{ pairingId: string; state: PairingState }>("/api/pairing/join", {
         pairingId: joinPairingId,
-        deviceId: selectedDeviceId,
       });
       setPairingId(data.pairingId);
       setState(data.state);
@@ -346,7 +374,7 @@ function App() {
       return;
     }
     try {
-      const data = await callBackend<{ pairingId: string; state: PairingState }>("/approve", {
+      const data = await callAgent<{ pairingId: string; state: PairingState }>("/api/pairing/approve", {
         pairingId: code,
       });
       setPairingId(data.pairingId);
@@ -363,9 +391,21 @@ function App() {
     setMessage(t.copied);
   };
 
-  const reconnect = async () => setMessage(t.reconnectAuto);
+  const reconnect = async () => {
+    try {
+      await callAgent("/api/reconnect");
+      setMessage(t.reconnectAuto);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t.startAgent);
+    }
+  };
   const disconnect = async () => setMessage(t.pauseNative);
   const removePairing = async () => {
+    try {
+      await callAgent("/api/remove");
+    } catch {
+      // The user may be viewing the site before installing the native agent.
+    }
     setPairingId("");
     setJoinPairingId("");
     setState("UNPAIRED");
@@ -459,12 +499,12 @@ function App() {
         </div>
         <div className="download-grid">
           <a className="download-card" href="/downloads/LocalBridge-Windows.zip">
-            <Monitor size={24} />
+            <PlatformIcon platform="windows" size={26} />
             <strong>Windows</strong>
             <span>LocalBridge-Windows.zip</span>
           </a>
           <a className="download-card" href="/downloads/LocalBridge-Mac.zip">
-            <Laptop size={24} />
+            <PlatformIcon platform="macos" size={26} />
             <strong>macOS</strong>
             <span>LocalBridge-Mac.zip</span>
           </a>
@@ -615,7 +655,7 @@ function ConnectorPanel({
       </div>
       <div className="connector-meta">
         <p>{devices.length ? t.chooseAgent : t.startNative}</p>
-        <p>{t.backend}: {BACKEND_URL}</p>
+        <p>{t.backend}: {LOCAL_AGENT_URL}</p>
       </div>
       <div className="pairing-fields">
         <label>
@@ -694,7 +734,11 @@ function statusIndex(state: PairingState | undefined) {
 function PlatformIcon({ platform, size = 22 }: { platform?: string; size?: number }) {
   const normalized = (platform || "").toLowerCase();
   if (normalized.includes("mac") || normalized.includes("darwin")) {
-    return <Apple size={size} aria-label="Apple" />;
+    return (
+      <svg className="apple-logo" width={size} height={size} viewBox="-2 0 28 28" aria-label="Apple" role="img">
+        <path d="M16.37 1.63c.08 1.08-.31 2.13-1.05 2.94-.79.88-2.07 1.55-3.19 1.46-.1-1.04.33-2.16 1.04-2.93.8-.87 2.17-1.54 3.2-1.47Zm3.52 16.69c-.67 1.48-.99 2.14-1.85 3.45-1.2 1.82-2.89 4.09-4.98 4.11-1.86.02-2.34-1.19-4.86-1.18-2.52.01-3.05 1.2-4.91 1.18-2.09-.02-3.68-2.07-4.88-3.89-3.35-5.1-3.7-11.09-1.64-14.28 1.46-2.27 3.77-3.6 5.95-3.6 2.22 0 3.62 1.21 5.46 1.21 1.78 0 2.87-1.22 5.44-1.22 1.94 0 4 1.06 5.45 2.88-4.79 2.63-4.02 9.48.82 11.34Z" />
+      </svg>
+    );
   }
   if (normalized.includes("win")) {
     return (

@@ -256,6 +256,7 @@ input {
 }
 
 .windows-logo {
+  color: #0078d4;
   display: grid;
   gap: 2px;
   grid-template-columns: 1fr 1fr;
@@ -264,6 +265,11 @@ input {
 .windows-logo i {
   background: currentColor;
   display: block;
+}
+
+.apple-logo {
+  color: #111820;
+  fill: currentColor;
 }
 
 .state-list {
