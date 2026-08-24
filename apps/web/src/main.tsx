@@ -71,6 +71,8 @@ const COPY = {
     installStart: "Install and start LocalBridge on each computer.",
     chooseDevice: "Choose this computer, then create or join a pairing code.",
     startAgent: "Start the LocalBridge app on each computer.",
+    browserBlocked: "The agent may be running, but this browser cannot reach localhost. Open the local agent page to continue.",
+    openLocalAgent: "Open LocalBridge Agent",
     backendError: "Could not reach the pairing backend.",
     startThisComputer: "Start the LocalBridge app on this computer first.",
     codeCreated: "Enter this 6-digit code on the other computer.",
@@ -157,6 +159,8 @@ const COPY = {
     installStart: "Төхөөрөмж бүр дээр LocalBridge суулгаж асаана уу.",
     chooseDevice: "Энэ компьютерыг сонгоод pairing code үүсгэх эсвэл оруулна уу.",
     startAgent: "Төхөөрөмж бүр дээр LocalBridge app-аа асаана уу.",
+    browserBlocked: "Agent ажиллаж байж магадгүй ч энэ browser localhost руу холбогдож чадсангүй. LocalBridge Agent хуудсыг нээгээд үргэлжлүүлнэ үү.",
+    openLocalAgent: "LocalBridge Agent нээх",
     backendError: "Pairing backend-тэй холбогдож чадсангүй.",
     startThisComputer: "Эхлээд энэ компьютер дээр LocalBridge app-аа асаана уу.",
     codeCreated: "Энэ 6 оронтой кодыг нөгөө компьютер дээр оруулна уу.",
@@ -301,7 +305,7 @@ function App() {
         setDevices([]);
         setSelectedDeviceId("");
         setState("UNPAIRED");
-        setMessage(t.startAgent);
+        setMessage(t.browserBlocked);
       }
     };
 
@@ -486,6 +490,7 @@ function App() {
           connectionReady={connectionReady}
           pairedDevice={pairedDevice}
           agentBaseUrl={agentBaseUrl}
+          localAgentUrls={LOCAL_AGENT_URLS}
           t={t}
         />
       </section>
@@ -606,6 +611,7 @@ function ConnectorPanel({
   connectionReady,
   pairedDevice,
   agentBaseUrl,
+  localAgentUrls,
   t,
 }: {
   devices: Device[];
@@ -628,6 +634,7 @@ function ConnectorPanel({
   connectionReady: boolean;
   pairedDevice: Device | null;
   agentBaseUrl: string;
+  localAgentUrls: string[];
   t: (typeof COPY)[Language];
 }) {
   return (
@@ -670,6 +677,15 @@ function ConnectorPanel({
         <p>{devices.length ? t.chooseAgent : t.startNative}</p>
         <p>{t.backend}: {agentBaseUrl}</p>
       </div>
+      {!devices.length && (
+        <div className="agent-fallback">
+          {localAgentUrls.map((url) => (
+            <a className="button secondary" href={url} target="_blank" rel="noreferrer" key={url}>
+              <Power size={16} /> {t.openLocalAgent}
+            </a>
+          ))}
+        </div>
+      )}
       <div className="pairing-fields">
         <label>
           {t.thisComputer}

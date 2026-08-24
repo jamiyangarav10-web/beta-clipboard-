@@ -314,6 +314,16 @@ input {
   gap: 0.5rem;
 }
 
+.agent-fallback {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.agent-fallback .button {
+  min-height: 38px;
+}
+
 .demo-actions button {
   background: #17201b;
   color: #fff;
