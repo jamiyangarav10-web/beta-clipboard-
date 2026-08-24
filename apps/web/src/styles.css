@@ -246,6 +246,16 @@ button,
   padding: 0.55rem 0.8rem;
 }
 
+.demo-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.local-dashboard-link {
+  margin: 1rem 0;
+  width: 100%;
+}
+
 .band,
 .downloads,
 .security,

@@ -229,8 +229,8 @@ function App() {
             ports, secrets, or terminal commands.
           </p>
           <div className="hero-actions">
-            <a className="button primary" href="#connect">
-              <Power size={18} /> Connect my devices
+            <a className="button primary" href={CONTROL_URL}>
+              <Power size={18} /> Open LocalBridge
             </a>
             <a className="button secondary" href="#downloads">
               <Download size={18} /> Download LocalBridge
@@ -450,6 +450,11 @@ function ConnectorPanel({
         <p>{agentOnline ? "Local agent connected on this machine." : "Start the native app to bring the connector online."}</p>
         <p>{status?.backendBaseUrl ? `Backend: ${status.backendBaseUrl}` : "Backend not configured yet."}</p>
       </div>
+      {!agentOnline ? (
+        <a className="button primary local-dashboard-link" href={CONTROL_URL}>
+          <Power size={16} /> Open LocalBridge
+        </a>
+      ) : null}
       <div className="pairing-fields">
         <label>
           6-digit pairing code
@@ -463,28 +468,28 @@ function ConnectorPanel({
         </label>
       </div>
       <div className="demo-actions">
-        <button type="button" onClick={registerDevice} disabled={busy}>
+        <button type="button" onClick={registerDevice} disabled={busy || !agentOnline}>
           <ShieldCheck size={16} /> Register device
         </button>
-        <button type="button" onClick={createSession} disabled={busy}>
+        <button type="button" onClick={createSession} disabled={busy || !agentOnline}>
           <Link2 size={16} /> Create session
         </button>
-        <button type="button" onClick={joinSession} disabled={busy}>
+        <button type="button" onClick={joinSession} disabled={busy || !agentOnline}>
           <Clipboard size={16} /> Join session
         </button>
-        <button type="button" onClick={approveSession} disabled={busy}>
+        <button type="button" onClick={approveSession} disabled={busy || !agentOnline}>
           <CheckCircle2 size={16} /> Finish pairing
         </button>
-        <button type="button" onClick={copyPairingId} disabled={!pairingId}>
+        <button type="button" onClick={copyPairingId} disabled={!pairingId || !agentOnline}>
           <Copy size={16} /> Copy ID
         </button>
-        <button type="button" onClick={reconnect} disabled={busy}>
+        <button type="button" onClick={reconnect} disabled={busy || !agentOnline}>
           <RefreshCw size={16} /> Reconnect
         </button>
-        <button type="button" onClick={disconnect} disabled={busy}>
+        <button type="button" onClick={disconnect} disabled={busy || !agentOnline}>
           <Unlink size={16} /> Disconnect
         </button>
-        <button type="button" onClick={removePairing} disabled={busy}>
+        <button type="button" onClick={removePairing} disabled={busy || !agentOnline}>
           <Link2 size={16} /> Remove
         </button>
       </div>
