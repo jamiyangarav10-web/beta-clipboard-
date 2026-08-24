@@ -90,3 +90,22 @@ test("agent polling returns the latest approved credentials for repeated pairing
   assert.equal(polled.body.credentials.sharedSecret, secondApproved.body.credentials.sharedSecret);
   assert.notEqual(polled.body.credentials.sharedSecret, firstApproved.body.credentials.sharedSecret);
 });
+
+test("device list keeps paired state when agents refresh registration", async () => {
+  const store = createMemoryStore();
+  await store.clear();
+  const service = new PairingService(store);
+  await service.registerDevice({ ...windows, controlToken: "windows-token" });
+  await service.registerDevice({ ...mac, controlToken: "mac-token" });
+
+  const created = await service.createSession({ deviceId: windows.deviceId });
+  await service.joinSession({ pairingId: created.body.pairingId, deviceId: mac.deviceId });
+  await service.approveSession({ pairingId: created.body.pairingId });
+  await service.registerDevice({ ...windows, controlToken: "windows-token" });
+  await service.registerDevice({ ...mac, controlToken: "mac-token" });
+
+  const listed = await service.listDevices();
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.devices.find((device) => device.deviceId === windows.deviceId).state, "PAIRED");
+  assert.equal(listed.body.devices.find((device) => device.deviceId === mac.deviceId).currentPairingId, created.body.pairingId);
+});

@@ -42,6 +42,7 @@ export class PairingService {
   async registerDevice(body) {
     const valid = validatePairingRegistration(body);
     if (!valid.ok) return { status: 400, body: { error: valid.reason } };
+    const existing = await this.store.get(deviceKey(body.deviceId));
 
     const device = {
       deviceId: body.deviceId,
@@ -50,8 +51,9 @@ export class PairingService {
       publicKey: body.publicKey || "",
       directEndpoint: body.directEndpoint || "",
       controlTokenHash: body.controlToken ? hashToken(body.controlToken) : "",
-      approvedPairings: [],
-      state: "UNPAIRED",
+      approvedPairings: existing?.approvedPairings || [],
+      currentPairingId: existing?.currentPairingId || null,
+      state: existing?.currentPairingId ? "PAIRED" : "UNPAIRED",
       expiresAt: nowMs(this.clock) + DEVICE_TTL_MS,
       updatedAt: nowMs(this.clock)
     };
@@ -225,6 +227,8 @@ function publicDevice(device) {
     deviceName: device.deviceName,
     platform: device.platform,
     directEndpoint: device.directEndpoint,
+    state: device.state,
+    currentPairingId: device.currentPairingId || null,
     publicKey: device.publicKey
   };
 }
