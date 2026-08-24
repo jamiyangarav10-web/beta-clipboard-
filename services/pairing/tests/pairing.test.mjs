@@ -67,3 +67,26 @@ test("website can list online agents and agents can poll for credentials", async
   const rejected = await service.pollDevice({ deviceId: mac.deviceId, controlToken: "wrong-token" });
   assert.equal(rejected.status, 403);
 });
+
+test("agent polling returns the latest approved credentials for repeated pairings", async () => {
+  let time = 1000;
+  const store = createMemoryStore();
+  await store.clear();
+  const service = new PairingService(store, () => time);
+  await service.registerDevice({ ...windows, controlToken: "windows-token" });
+  await service.registerDevice({ ...mac, controlToken: "mac-token" });
+
+  const first = await service.createSession({ deviceId: windows.deviceId });
+  await service.joinSession({ pairingId: first.body.pairingId, deviceId: mac.deviceId });
+  const firstApproved = await service.approveSession({ pairingId: first.body.pairingId });
+  time += 1000;
+
+  const second = await service.createSession({ deviceId: windows.deviceId });
+  await service.joinSession({ pairingId: second.body.pairingId, deviceId: mac.deviceId });
+  const secondApproved = await service.approveSession({ pairingId: second.body.pairingId });
+
+  const polled = await service.pollDevice({ deviceId: mac.deviceId, controlToken: "mac-token" });
+  assert.equal(polled.status, 200);
+  assert.equal(polled.body.credentials.sharedSecret, secondApproved.body.credentials.sharedSecret);
+  assert.notEqual(polled.body.credentials.sharedSecret, firstApproved.body.credentials.sharedSecret);
+});

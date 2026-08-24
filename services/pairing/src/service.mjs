@@ -152,8 +152,8 @@ export class PairingService {
     session.state = "PAIRED";
     session.credentials = credentials;
     await this.store.set(sessionKey(session.pairingId), session);
-    await this.store.set(deviceKey(requester.deviceId), { ...requester, state: "PAIRED" });
-    await this.store.set(deviceKey(responder.deviceId), { ...responder, state: "PAIRED" });
+    await this.store.set(deviceKey(requester.deviceId), { ...requester, state: "PAIRED", currentPairingId: session.pairingId });
+    await this.store.set(deviceKey(responder.deviceId), { ...responder, state: "PAIRED", currentPairingId: session.pairingId });
 
     return { status: 200, body: { pairingId: session.pairingId, state: "PAIRED", credentials } };
   }
@@ -182,7 +182,16 @@ export class PairingService {
       sessions.push(publicSession);
     }
 
-    const pairedSession = sessions.find((session) => session.used && session.credentials);
+    let pairedSession = null;
+    if (device.currentPairingId) {
+      const currentSession = await this.store.get(sessionKey(device.currentPairingId));
+      if (currentSession?.used && currentSession.credentials) pairedSession = currentSession;
+    }
+    if (!pairedSession) {
+      pairedSession = sessions
+        .filter((session) => session.used && session.credentials)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0] || null;
+    }
     return {
       status: 200,
       body: {
