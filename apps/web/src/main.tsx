@@ -39,7 +39,7 @@ type Device = {
 
 type Language = "en" | "mn";
 
-const LOCAL_AGENT_URL = "http://127.0.0.1:17833";
+const LOCAL_AGENT_URLS = ["http://localhost:17833", "http://127.0.0.1:17833"];
 
 type AgentStatus = {
   deviceId: string;
@@ -237,6 +237,7 @@ function App() {
   const [pairingId, setPairingId] = useState("");
   const [joinPairingId, setJoinPairingId] = useState("");
   const [state, setState] = useState<PairingState>("UNPAIRED");
+  const [agentBaseUrl, setAgentBaseUrl] = useState(LOCAL_AGENT_URLS[0]);
   const t = COPY[language];
   const [message, setMessage] = useState(t.installStart);
   const [busy, setBusy] = useState(false);
@@ -267,9 +268,9 @@ function App() {
     let mounted = true;
     const refreshDevices = async () => {
       try {
-        const response = await fetch(`${LOCAL_AGENT_URL}/api/status`, { cache: "no-store" });
-        const data = (await response.json()) as AgentStatus;
+        const { data, baseUrl } = await fetchLocalAgentStatus();
         if (!mounted) return;
+        setAgentBaseUrl(baseUrl);
         const localDevice: Device = {
           deviceId: data.deviceId,
           deviceName: data.deviceName,
@@ -315,14 +316,23 @@ function App() {
   const callAgent = async <T,>(path: string, body?: unknown) => {
     setBusy(true);
     try {
-      const response = await fetch(`${LOCAL_AGENT_URL}${path}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: body ? JSON.stringify(body) : "{}",
-      });
-      const data = (await response.json()) as T & { error?: string };
-      if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
-      return data as T;
+      let lastError: unknown = null;
+      for (const baseUrl of [agentBaseUrl, ...LOCAL_AGENT_URLS.filter((url) => url !== agentBaseUrl)]) {
+        try {
+          const response = await fetch(`${baseUrl}${path}`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: body ? JSON.stringify(body) : "{}",
+          });
+          const data = (await response.json()) as T & { error?: string };
+          if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+          setAgentBaseUrl(baseUrl);
+          return data as T;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError instanceof Error ? lastError : new Error(t.startAgent);
     } finally {
       setBusy(false);
     }
@@ -475,6 +485,7 @@ function App() {
           peerName={peerName}
           connectionReady={connectionReady}
           pairedDevice={pairedDevice}
+          agentBaseUrl={agentBaseUrl}
           t={t}
         />
       </section>
@@ -594,6 +605,7 @@ function ConnectorPanel({
   peerName,
   connectionReady,
   pairedDevice,
+  agentBaseUrl,
   t,
 }: {
   devices: Device[];
@@ -615,6 +627,7 @@ function ConnectorPanel({
   peerName: string;
   connectionReady: boolean;
   pairedDevice: Device | null;
+  agentBaseUrl: string;
   t: (typeof COPY)[Language];
 }) {
   return (
@@ -655,7 +668,7 @@ function ConnectorPanel({
       </div>
       <div className="connector-meta">
         <p>{devices.length ? t.chooseAgent : t.startNative}</p>
-        <p>{t.backend}: {LOCAL_AGENT_URL}</p>
+        <p>{t.backend}: {agentBaseUrl}</p>
       </div>
       <div className="pairing-fields">
         <label>
@@ -729,6 +742,20 @@ function statusIndex(state: PairingState | undefined) {
     default:
       return 0;
   }
+}
+
+async function fetchLocalAgentStatus() {
+  let lastError: unknown = null;
+  for (const baseUrl of LOCAL_AGENT_URLS) {
+    try {
+      const response = await fetch(`${baseUrl}/api/status`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Agent status failed (${response.status})`);
+      return { data: (await response.json()) as AgentStatus, baseUrl };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("LocalBridge agent not found");
 }
 
 function PlatformIcon({ platform, size = 22 }: { platform?: string; size?: number }) {
