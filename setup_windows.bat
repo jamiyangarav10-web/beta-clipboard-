@@ -25,6 +25,9 @@ if "%PY_CMD%"=="" (
 )
 
 if not exist "%APP_DIR%" mkdir "%APP_DIR%"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*LocalBridge*agent.py*' -or $_.CommandLine -like '*LocalBridge*windows*server.py*' } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force } catch {} }" >nul 2>nul
+
 xcopy /E /I /Y packages "%APP_DIR%\packages" >nul
 xcopy /E /I /Y windows "%APP_DIR%\windows" >nul
 copy /Y agent.py "%APP_DIR%\agent.py" >nul

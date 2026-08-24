@@ -31,7 +31,8 @@ from localbridge.security import secure_compare
 # Configuration (loaded first)
 # ----------------------------
 BASE_DIR = Path(__file__).resolve().parent
-ENV_PATH = BASE_DIR / ".env"
+APP_DIR = Path(os.environ.get("LOCALBRIDGE_HOME", BASE_DIR.parent))
+ENV_PATH = Path(os.environ.get("LOCALBRIDGE_ENV_PATH", APP_DIR / ".env"))
 
 def load_env(path: Path) -> dict:
     env: dict = {}
@@ -62,7 +63,7 @@ CLOSE_CODE_SIZE = 4409
 # ----------------------------
 # Logging — NO clipboard content
 # ----------------------------
-LOG_PATH = BASE_DIR / "server.log"
+LOG_PATH = APP_DIR / "server.log"
 logging.basicConfig(
     filename=str(LOG_PATH),
     level=logging.INFO,

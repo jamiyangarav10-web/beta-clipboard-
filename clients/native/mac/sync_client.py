@@ -20,8 +20,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / "Library/Application Support/LocalBridge"
-ENV_PATH = CONFIG_DIR / ".env"
+CONFIG_DIR = Path(os.environ.get("LOCALBRIDGE_HOME", Path.home() / "Library/Application Support/LocalBridge"))
+ENV_PATH = Path(os.environ.get("LOCALBRIDGE_ENV_PATH", CONFIG_DIR / ".env"))
 PORT = int(os.environ.get("LOCALBRIDGE_PORT", os.environ.get("PORT", "8765")))
 
 
@@ -47,7 +47,7 @@ WINDOWS_IP = (
     or cfg.get("WINDOWS_TAILSCALE_IP")
     or ""
 )
-SECRET = os.environ.get("LOCALBRIDGE_SECRET") or cfg.get("secret") or ""
+SECRET = os.environ.get("LOCALBRIDGE_SECRET") or cfg.get("SECRET") or cfg.get("secret") or ""
 URI = f"ws://{WINDOWS_IP}:{PORT}" if WINDOWS_IP else ""
 
 

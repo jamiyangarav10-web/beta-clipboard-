@@ -382,6 +382,10 @@ def poll_backend_once():
                 state["state"] = "PAIRED"
                 state["pairedDevice"] = credentials.get("paired_device", {})
             start_sync()
+        elif existing.get("shared_secret"):
+            refresh_state_from_disk()
+            if not (sync_proc and sync_proc.poll() is None):
+                start_sync()
 
 
 def backend_poll_loop():
@@ -404,6 +408,23 @@ def sync_command():
     return [sys.executable, os.path.join(CONFIG_DIR, "windows", "server.py")]
 
 
+def sync_environment():
+    env = os.environ.copy()
+    creds = load_credentials()
+    paired = creds.get("paired_device", {})
+    transport = creds.get("transport", {})
+    env["LOCALBRIDGE_HOME"] = str(CONFIG_DIR)
+    env["LOCALBRIDGE_ENV_PATH"] = str(ENV_PATH)
+    env["LOCALBRIDGE_CREDENTIALS_PATH"] = str(CREDENTIALS_PATH)
+    if creds.get("shared_secret"):
+        env["LOCALBRIDGE_SECRET"] = str(creds["shared_secret"])
+    if paired.get("direct_host"):
+        env["LOCALBRIDGE_WIN_IP"] = str(paired["direct_host"])
+    if transport.get("port"):
+        env["LOCALBRIDGE_PORT"] = str(transport["port"])
+    return env
+
+
 def start_sync():
     global sync_proc
     with sync_lock:
@@ -414,6 +435,7 @@ def start_sync():
             sync_proc = subprocess.Popen(
                 sync_command(), cwd=CONFIG_DIR,
                 stdout=open(LOG_PATH, "a"), stderr=subprocess.STDOUT,
+                env=sync_environment(),
             )
             with state_lock:
                 state["engineRunning"] = True
@@ -575,6 +597,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    if load_credentials().get("shared_secret"):
+        refresh_state_from_disk()
+        start_sync()
     threading.Thread(target=backend_poll_loop, daemon=True).start()
     server = ThreadingHTTPServer((CONTROL_HOST, CONTROL_PORT), Handler)
     log(f"control agent listening on {CONTROL_HOST}:{CONTROL_PORT} device={DEVICE_ID} platform={PLATFORM}")
