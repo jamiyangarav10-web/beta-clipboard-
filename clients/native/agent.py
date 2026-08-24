@@ -181,7 +181,7 @@ CONTROL_TOKEN = os.environ.get("CONTROL_TOKEN") or IDENTITY.get("control_token")
 
 
 def tailscale_ip():
-    env_ip = os.environ.get("MY_IP") or os.environ.get("WINDOWS_TAILSCALE_IP") or ENV.get("WINDOWS_TAILSCALE_IP")
+    env_ip = os.environ.get("MY_IP")
     if env_ip:
         return env_ip
     try:
