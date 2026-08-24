@@ -71,11 +71,9 @@ input {
 }
 
 .brand-logo {
-  border: 1px solid #dbe3dd;
-  border-radius: 8px;
-  height: 40px;
-  object-fit: cover;
-  width: 40px;
+  height: 52px;
+  object-fit: contain;
+  width: 180px;
 }
 
 .brand-mark {
@@ -485,6 +483,11 @@ summary {
 
   .topbar nav {
     flex-wrap: wrap;
+  }
+
+  .brand-logo {
+    height: 44px;
+    width: 150px;
   }
 
   .language-select {
