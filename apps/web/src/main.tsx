@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
+  Apple,
   ArrowRight,
   CheckCircle2,
   Clipboard,
@@ -497,6 +498,7 @@ function App() {
           <div className="device-list">
             {devices.map((device) => (
               <div className="device-row" key={device.deviceId}>
+                <PlatformIcon platform={device.platform} size={22} />
                 <div>
                   <strong>{device.deviceName}</strong>
                   <span>{device.platform}</span>
@@ -595,12 +597,12 @@ function ConnectorPanel({
       )}
       <div className="connection-map">
         <div>
-          <Laptop size={22} />
+          <PlatformIcon platform={selectedDevice?.platform} size={24} />
           <span>{selectedDevice?.deviceName || t.thisComputer}</span>
         </div>
         <ArrowRight size={18} />
         <div>
-          <Monitor size={22} />
+          <PlatformIcon platform={pairedDevice?.platform} size={24} />
           <span>{peerName}</span>
         </div>
       </div>
@@ -687,6 +689,29 @@ function statusIndex(state: PairingState | undefined) {
     default:
       return 0;
   }
+}
+
+function PlatformIcon({ platform, size = 22 }: { platform?: string; size?: number }) {
+  const normalized = (platform || "").toLowerCase();
+  if (normalized.includes("mac") || normalized.includes("darwin")) {
+    return <Apple size={size} aria-label="Apple" />;
+  }
+  if (normalized.includes("win")) {
+    return (
+      <span
+        className="windows-logo"
+        style={{ height: size, width: size }}
+        aria-label="Windows"
+        role="img"
+      >
+        <i />
+        <i />
+        <i />
+        <i />
+      </span>
+    );
+  }
+  return <Monitor size={size} aria-label="Device" />;
 }
 
 function Step({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {

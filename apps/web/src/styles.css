@@ -255,6 +255,17 @@ input {
   min-width: 105px;
 }
 
+.windows-logo {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.windows-logo i {
+  background: currentColor;
+  display: block;
+}
+
 .state-list {
   display: grid;
   gap: 0.45rem;
@@ -411,7 +422,9 @@ p {
 
 .device-row {
   border-bottom: 1px solid #dde2d9;
-  justify-content: space-between;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   padding: 1rem 0;
 }
 
@@ -508,6 +521,13 @@ summary {
   .dashboard-header,
   .device-row {
     align-items: flex-start;
-    flex-direction: column;
+  }
+
+  .device-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .device-row .status {
+    grid-column: 1 / -1;
   }
 }
