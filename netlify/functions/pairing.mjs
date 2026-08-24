@@ -5,7 +5,10 @@ const json = (statusCode, body) => ({
   statusCode,
   headers: {
     "content-type": "application/json",
-    "cache-control": "no-store"
+    "cache-control": "no-store",
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type"
   },
   body: JSON.stringify(body)
 });
@@ -27,8 +30,19 @@ export const handler = async (event) => {
     const path = event.path.replace(/^.*\/pairing/, "") || "/";
     const method = event.httpMethod.toUpperCase();
 
+    if (method === "OPTIONS") {
+      return json(204, {});
+    }
+    if (method === "GET" && path === "/devices") {
+      const result = await service.listDevices();
+      return json(result.status, result.body);
+    }
     if (method === "POST" && path === "/register") {
       const result = await service.registerDevice(await readBody(event));
+      return json(result.status, result.body);
+    }
+    if (method === "POST" && path === "/device/poll") {
+      const result = await service.pollDevice(await readBody(event));
       return json(result.status, result.body);
     }
     if (method === "POST" && path === "/session") {

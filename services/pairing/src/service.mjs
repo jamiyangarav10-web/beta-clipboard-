@@ -17,8 +17,20 @@ function deviceKey(id) {
   return `device:${id}`;
 }
 
+function deviceIndexKey() {
+  return "devices:index";
+}
+
+function sessionIndexKey() {
+  return "sessions:index";
+}
+
 function randomPairingCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+}
+
+function hashToken(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
 }
 
 export class PairingService {
@@ -37,13 +49,27 @@ export class PairingService {
       platform: body.platform,
       publicKey: body.publicKey || "",
       directEndpoint: body.directEndpoint || "",
+      controlTokenHash: body.controlToken ? hashToken(body.controlToken) : "",
       approvedPairings: [],
       state: "UNPAIRED",
       expiresAt: nowMs(this.clock) + DEVICE_TTL_MS,
       updatedAt: nowMs(this.clock)
     };
     await this.store.set(deviceKey(device.deviceId), device);
+    await this.addToIndex(deviceIndexKey(), device.deviceId);
     return { status: 200, body: { deviceId: device.deviceId, state: device.state, expiresAt: device.expiresAt } };
+  }
+
+  async listDevices() {
+    const ids = await this.store.get(deviceIndexKey()) || [];
+    const devices = [];
+    for (const id of ids) {
+      const device = await this.store.get(deviceKey(id));
+      if (device && device.expiresAt > nowMs(this.clock)) {
+        devices.push(publicDevice(device));
+      }
+    }
+    return { status: 200, body: { devices } };
   }
 
   async createSession(body) {
@@ -70,6 +96,7 @@ export class PairingService {
       createdAt: nowMs(this.clock)
     };
     await this.store.set(sessionKey(pairingId), session);
+    await this.addToIndex(sessionIndexKey(), pairingId);
     return {
       status: 201,
       body: {
@@ -131,12 +158,55 @@ export class PairingService {
     return { status: 200, body: { pairingId: session.pairingId, state: "PAIRED", credentials } };
   }
 
+  async pollDevice(body) {
+    if (!body || typeof body.deviceId !== "string" || typeof body.controlToken !== "string") {
+      return { status: 400, body: { error: "deviceId and controlToken required" } };
+    }
+    const device = await this.store.get(deviceKey(body.deviceId));
+    if (!device || device.expiresAt <= nowMs(this.clock)) {
+      return { status: 404, body: { error: "registered device not found" } };
+    }
+    if (device.controlTokenHash && device.controlTokenHash !== hashToken(body.controlToken)) {
+      return { status: 403, body: { error: "invalid device token" } };
+    }
+
+    const sessions = [];
+    const ids = await this.store.get(sessionIndexKey()) || [];
+    for (const id of ids) {
+      const session = await this.store.get(sessionKey(id));
+      if (!session || session.expiresAt <= nowMs(this.clock)) continue;
+      const involved = session.requesterDeviceId === body.deviceId || session.responderDeviceId === body.deviceId;
+      if (!involved) continue;
+      const publicSession = { ...session };
+      if (!session.used) delete publicSession.credentials;
+      sessions.push(publicSession);
+    }
+
+    const pairedSession = sessions.find((session) => session.used && session.credentials);
+    return {
+      status: 200,
+      body: {
+        device: publicDevice(device),
+        sessions,
+        credentials: pairedSession?.credentials || null
+      }
+    };
+  }
+
   async getSession(pairingId) {
     const session = await this.store.get(sessionKey(pairingId));
     if (!session || session.expiresAt <= nowMs(this.clock)) return { status: 404, body: { error: "pairing session not found" } };
     const publicSession = { ...session };
     delete publicSession.credentials?.sharedSecret;
     return { status: 200, body: publicSession };
+  }
+
+  async addToIndex(key, id) {
+    const index = await this.store.get(key) || [];
+    if (!index.includes(id)) {
+      index.push(id);
+      await this.store.set(key, index);
+    }
   }
 }
 

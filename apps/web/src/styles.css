@@ -35,6 +35,17 @@ button,
   padding: 0.75rem 1rem;
 }
 
+select,
+input {
+  border: 1px solid #dde2d9;
+  border-radius: 6px;
+  color: #17201b;
+  font: inherit;
+  min-height: 38px;
+  padding: 0.45rem 0.55rem;
+  width: 100%;
+}
+
 .topbar {
   align-items: center;
   background: rgba(246, 247, 244, 0.92);

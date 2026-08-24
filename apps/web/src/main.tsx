@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
   ArrowRight,
@@ -29,173 +29,147 @@ type PairingState =
   | "RECONNECTING"
   | "PAUSED";
 
-type AgentStatus = {
+type Device = {
   deviceId: string;
   deviceName: string;
   platform: string;
-  state: PairingState;
-  syncEnabled: boolean;
-  engineRunning: boolean;
-  backendBaseUrl: string;
-  controlPort: number;
-  hasCredentials: boolean;
-  pairedDevice: {
-    device_id?: string;
-    device_name?: string;
-    platform?: string;
-    direct_host?: string;
-  };
+  directEndpoint?: string;
 };
 
-type ApiResponse<T> = {
-  status: number;
-  body: T;
-};
-
-const CONTROL_URL = "http://127.0.0.1:17833";
+const BACKEND_URL = "/.netlify/functions/pairing";
 
 function App() {
-  const [status, setStatus] = useState<AgentStatus | null>(null);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [pairingId, setPairingId] = useState("");
   const [joinPairingId, setJoinPairingId] = useState("");
-  const [message, setMessage] = useState("Connect a native agent to start.");
+  const [state, setState] = useState<PairingState>("UNPAIRED");
+  const [message, setMessage] = useState("Install and start LocalBridge on each computer.");
   const [busy, setBusy] = useState(false);
+
+  const selectedDevice = useMemo(
+    () => devices.find((device) => device.deviceId === selectedDeviceId) || null,
+    [devices, selectedDeviceId]
+  );
+  const peerName = state === "PAIRED" || state === "CONNECTED" ? "Paired device" : "No paired device yet";
 
   useEffect(() => {
     let mounted = true;
-
-    const refresh = async () => {
+    const refreshDevices = async () => {
       try {
-        const response = await fetch(`${CONTROL_URL}/api/status`);
-        if (!response.ok) {
-          throw new Error("agent unavailable");
-        }
-        const data = (await response.json()) as AgentStatus;
-        if (mounted) {
-          setStatus(data);
-          setMessage(data.hasCredentials ? "Agent connected" : "Agent detected");
-        }
+        const response = await fetch(`${BACKEND_URL}/devices`, { cache: "no-store" });
+        const data = (await response.json()) as { devices: Device[] };
+        if (!mounted) return;
+        const onlineDevices = data.devices || [];
+        setDevices(onlineDevices);
+        setSelectedDeviceId((current) => {
+          if (current && onlineDevices.some((device) => device.deviceId === current)) return current;
+          return onlineDevices[0]?.deviceId || "";
+        });
+        setMessage(onlineDevices.length ? "Choose this computer, then create or join a pairing code." : "Start the LocalBridge app on each computer.");
       } catch {
-        if (mounted) {
-          setStatus(null);
-          setMessage("Open the LocalBridge agent on this computer.");
-        }
+        if (mounted) setMessage("Could not reach the pairing backend.");
       }
     };
 
-    refresh();
-    const interval = window.setInterval(refresh, 2000);
+    refreshDevices();
+    const interval = window.setInterval(refreshDevices, 3000);
     return () => {
       mounted = false;
       window.clearInterval(interval);
     };
   }, []);
 
-  const callAgent = async <T,>(path: string, body?: unknown) => {
+  const callBackend = async <T,>(path: string, body?: unknown) => {
     setBusy(true);
     try {
-      const response = await fetch(`${CONTROL_URL}${path}`, {
+      const response = await fetch(`${BACKEND_URL}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: body ? JSON.stringify(body) : "{}",
       });
-      const data = (await response.json()) as T;
-      return { status: response.status, body: data } as ApiResponse<T>;
+      const data = (await response.json()) as T & { error?: string };
+      if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+      return data as T;
     } finally {
       setBusy(false);
     }
   };
 
-  const registerDevice = async () => {
-    const result = await callAgent<AgentStatus>("/api/register");
-    if (result.status >= 200 && result.status < 300) {
-      setStatus(result.body);
-      setMessage("Device registered with the agent.");
-    } else {
-      setMessage("Could not register device.");
+  const requireDevice = () => {
+    if (!selectedDeviceId) {
+      setMessage("Start the LocalBridge app on this computer first.");
+      return false;
     }
+    return true;
   };
 
   const createSession = async () => {
-    const currentDeviceId = status?.deviceId;
-    const result = await callAgent<{ pairingId: string }>("/api/pairing/session", {
-      deviceId: currentDeviceId,
-    });
-    if (result.status >= 200 && result.status < 300) {
-      setPairingId(result.body.pairingId);
-      setJoinPairingId(result.body.pairingId);
-      setMessage("Pairing code created. Enter it on your other device.");
-    } else {
-      setMessage("Could not create pairing session.");
+    if (!requireDevice()) return;
+    try {
+      const data = await callBackend<{ pairingId: string; state: PairingState }>("/session", {
+        deviceId: selectedDeviceId,
+      });
+      setPairingId(data.pairingId);
+      setJoinPairingId(data.pairingId);
+      setState(data.state);
+      setMessage("Enter this 6-digit code on the other computer.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not create pairing code.");
     }
   };
 
   const joinSession = async () => {
+    if (!requireDevice()) return;
     if (!joinPairingId) {
-      setMessage("Paste a pairing ID first.");
+      setMessage("Enter the 6-digit pairing code first.");
       return;
     }
-    const result = await callAgent<{ pairingId: string }>("/api/pairing/join", {
-      pairingId: joinPairingId,
-      deviceId: status?.deviceId,
-    });
-    if (result.status >= 200 && result.status < 300) {
-      setPairingId(result.body.pairingId);
-      setMessage("This device joined the pairing session.");
-    } else {
-      setMessage("Could not join that pairing session.");
+    try {
+      const data = await callBackend<{ pairingId: string; state: PairingState }>("/join", {
+        pairingId: joinPairingId,
+        deviceId: selectedDeviceId,
+      });
+      setPairingId(data.pairingId);
+      setState(data.state);
+      setMessage("Joined. Finish pairing from the computer that created the code.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not join that pairing code.");
     }
   };
 
   const approveSession = async () => {
-    if (!pairingId) {
-      setMessage("Create a pairing code first.");
+    const code = pairingId || joinPairingId;
+    if (!code) {
+      setMessage("Create or enter a pairing code first.");
       return;
     }
-    const result = await callAgent<AgentStatus>("/api/pairing/approve", {
-      pairingId,
-    });
-    if (result.status >= 200 && result.status < 300) {
-      setStatus(result.body);
-      setMessage("Pairing finished and credentials stored locally.");
-    } else {
-      setMessage("Approval failed.");
-    }
-  };
-
-  const reconnect = async () => {
-    const result = await callAgent<AgentStatus>("/api/reconnect");
-    if (result.status >= 200 && result.status < 300) {
-      setStatus(result.body);
-      setMessage("Clipboard sync restarted.");
-    }
-  };
-
-  const disconnect = async () => {
-    const result = await callAgent<AgentStatus>("/api/disconnect");
-    if (result.status >= 200 && result.status < 300) {
-      setStatus(result.body);
-      setMessage("Clipboard sync paused.");
-    }
-  };
-
-  const removePairing = async () => {
-    const result = await callAgent<AgentStatus>("/api/remove");
-    if (result.status >= 200 && result.status < 300) {
-      setStatus(result.body);
-      setPairingId("");
-      setJoinPairingId("");
-      setMessage("Local pairing removed.");
+    try {
+      const data = await callBackend<{ pairingId: string; state: PairingState }>("/approve", {
+        pairingId: code,
+      });
+      setPairingId(data.pairingId);
+      setState(data.state);
+      setMessage("Pairing finished. LocalBridge agents will connect automatically.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not finish pairing.");
     }
   };
 
   const copyPairingId = async () => {
     if (!pairingId) return;
     await navigator.clipboard.writeText(pairingId);
-    setMessage("Pairing ID copied.");
+    setMessage("Pairing code copied.");
   };
 
-  const pairedName = status?.pairedDevice?.device_name || "No paired device yet";
+  const reconnect = async () => setMessage("LocalBridge reconnects automatically after pairing.");
+  const disconnect = async () => setMessage("Use the LocalBridge app on the computer to pause syncing.");
+  const removePairing = async () => {
+    setPairingId("");
+    setJoinPairingId("");
+    setState("UNPAIRED");
+    setMessage("Pairing code cleared on this page.");
+  };
 
   return (
     <main>
@@ -212,7 +186,7 @@ function App() {
           <a href="#downloads">Downloads</a>
           <a href="#privacy">Privacy</a>
           <a href="#faq">FAQ</a>
-          <a className="icon-link" href="https://github.com/YOUR_USERNAME/LocalBridge" aria-label="GitHub">
+          <a className="icon-link" href="https://github.com/jamiyangarav10-web/beta-clipboard-" aria-label="GitHub">
             <Github size={18} />
           </a>
         </nav>
@@ -229,8 +203,8 @@ function App() {
             ports, secrets, or terminal commands.
           </p>
           <div className="hero-actions">
-            <a className="button primary" href={CONTROL_URL}>
-              <Power size={18} /> Open LocalBridge
+            <a className="button primary" href="#connect">
+              <Power size={18} /> Connect my devices
             </a>
             <a className="button secondary" href="#downloads">
               <Download size={18} /> Download LocalBridge
@@ -239,14 +213,15 @@ function App() {
           <p className="connector-note">{message}</p>
         </div>
         <ConnectorPanel
-          agentOnline={Boolean(status)}
+          devices={devices}
+          selectedDevice={selectedDevice}
+          selectedDeviceId={selectedDeviceId}
+          setSelectedDeviceId={setSelectedDeviceId}
           busy={busy}
-          status={status}
+          state={state}
           pairingId={pairingId}
           joinPairingId={joinPairingId}
           setJoinPairingId={setJoinPairingId}
-          setPairingId={setPairingId}
-          registerDevice={registerDevice}
           createSession={createSession}
           joinSession={joinSession}
           approveSession={approveSession}
@@ -254,6 +229,7 @@ function App() {
           disconnect={disconnect}
           removePairing={removePairing}
           copyPairingId={copyPairingId}
+          peerName={peerName}
         />
       </section>
 
@@ -264,8 +240,8 @@ function App() {
         </div>
         <div className="steps">
           <Step icon={<Download />} title="Install" body="Download the small native agent on each computer." />
-          <Step icon={<Link2 />} title="Pair" body="The website talks to the local agent, which registers and pairs with the backend." />
-          <Step icon={<Clipboard />} title="Copy & paste" body="After pairing, clipboard text moves directly between your paired agents." />
+          <Step icon={<Link2 />} title="Pair" body="Choose each online device on this website and pair with a 6-digit code." />
+          <Step icon={<Clipboard />} title="Copy & paste" body="After pairing, the native agents sync clipboard text directly." />
         </div>
       </section>
 
@@ -295,21 +271,9 @@ function App() {
           <h2>The website pairs devices. It does not sync clipboard contents.</h2>
         </div>
         <div className="security-grid">
-          <SecurityItem
-            icon={<Lock />}
-            title="Short-lived pairing"
-            body="Pairing sessions expire, are single-use, and require explicit device approval."
-          />
-          <SecurityItem
-            icon={<ShieldCheck />}
-            title="Native-only clipboard access"
-            body="Clipboard reads and writes happen in the Windows and macOS agents, not browser JavaScript."
-          />
-          <SecurityItem
-            icon={<RefreshCw />}
-            title="Direct sync path"
-            body="After pairing, agents use the existing authenticated WebSocket clipboard engine."
-          />
+          <SecurityItem icon={<Lock />} title="Short-lived pairing" body="Pairing sessions expire and are single-use." />
+          <SecurityItem icon={<ShieldCheck />} title="Native-only clipboard access" body="Clipboard reads and writes happen in the Windows and macOS agents, not browser JavaScript." />
+          <SecurityItem icon={<RefreshCw />} title="Direct sync path" body="After pairing, agents use the authenticated WebSocket clipboard engine." />
         </div>
       </section>
 
@@ -321,46 +285,25 @@ function App() {
               <h2>LocalBridge</h2>
             </div>
             <div className="dashboard-status">
-              <span>{status ? `${status.platform} agent` : "No agent detected"}</span>
-              <span>{status ? status.state : "Install and launch the native app"}</span>
+              <span>{devices.length ? `${devices.length} online` : "No agent online"}</span>
+              <span>{state}</span>
             </div>
           </div>
           <div className="device-list">
-            <div className="device-row">
-              <div>
-                <strong>{status?.deviceName || "This device"}</strong>
-                <span>{status?.platform || "Not connected yet"}</span>
+            {devices.map((device) => (
+              <div className="device-row" key={device.deviceId}>
+                <div>
+                  <strong>{device.deviceName}</strong>
+                  <span>{device.platform}</span>
+                </div>
+                <span className="status">
+                  <i />
+                  Online
+                </span>
               </div>
-              <span className="status">
-                <i />
-                {status?.state || "Offline"}
-              </span>
-            </div>
-            <div className="device-row">
-              <div>
-                <strong>{pairedName}</strong>
-                <span>Paired peer</span>
-              </div>
-              <span className="status">
-                <i />
-                {status?.hasCredentials ? "Paired" : "Waiting"}
-              </span>
-            </div>
+            ))}
           </div>
-          <div className="dashboard-actions">
-            <button type="button" onClick={reconnect}>
-              <RefreshCw size={16} /> Reconnect
-            </button>
-            <button type="button" onClick={disconnect}>
-              <Unlink size={16} /> Disconnect device
-            </button>
-            <button type="button" onClick={removePairing}>
-              <Link2 size={16} /> Remove paired device
-            </button>
-          </div>
-          <p className="last-connection">
-            Last connection: {status?.engineRunning ? "Live now" : "Waiting"}
-          </p>
+          <p className="last-connection">Last connection: {state === "PAIRED" ? "Pairing finished" : "Waiting"}</p>
         </div>
       </section>
 
@@ -377,7 +320,7 @@ function App() {
         </details>
         <details>
           <summary>What still needs setup during beta?</summary>
-          <p>Unsigned beta downloads may need operating-system approval. Pair both devices within five minutes so the short-lived session does not expire.</p>
+          <p>Unsigned beta downloads may need operating-system approval. Keep the LocalBridge app running on both computers.</p>
         </details>
       </section>
     </main>
@@ -385,14 +328,15 @@ function App() {
 }
 
 function ConnectorPanel({
-  agentOnline,
+  devices,
+  selectedDevice,
+  selectedDeviceId,
+  setSelectedDeviceId,
   busy,
-  status,
+  state,
   pairingId,
   joinPairingId,
   setJoinPairingId,
-  setPairingId,
-  registerDevice,
   createSession,
   joinSession,
   approveSession,
@@ -400,15 +344,17 @@ function ConnectorPanel({
   disconnect,
   removePairing,
   copyPairingId,
+  peerName,
 }: {
-  agentOnline: boolean;
+  devices: Device[];
+  selectedDevice: Device | null;
+  selectedDeviceId: string;
+  setSelectedDeviceId: (value: string) => void;
   busy: boolean;
-  status: AgentStatus | null;
+  state: PairingState;
   pairingId: string;
   joinPairingId: string;
   setJoinPairingId: (value: string) => void;
-  setPairingId: (value: string) => void;
-  registerDevice: () => Promise<void>;
   createSession: () => Promise<void>;
   joinSession: () => Promise<void>;
   approveSession: () => Promise<void>;
@@ -416,22 +362,20 @@ function ConnectorPanel({
   disconnect: () => Promise<void>;
   removePairing: () => Promise<void>;
   copyPairingId: () => Promise<void>;
+  peerName: string;
 }) {
-  const statusLabel = status?.state || (agentOnline ? "Agent detected" : "Waiting for agent");
-  const peerName = status?.pairedDevice?.device_name || "No paired device yet";
-
   return (
     <aside className="panel connector-panel" aria-label="LocalBridge connector">
       <div className="panel-title">
         <span>
-          <Smartphone size={18} /> {statusLabel}
+          <Smartphone size={18} /> {devices.length ? "Agent online" : "Waiting for agent"}
         </span>
         <CheckCircle2 size={18} />
       </div>
       <div className="connection-map">
         <div>
           <Laptop size={22} />
-          <span>{status?.deviceName || "This device"}</span>
+          <span>{selectedDevice?.deviceName || "This device"}</span>
         </div>
         <ArrowRight size={18} />
         <div>
@@ -440,22 +384,28 @@ function ConnectorPanel({
         </div>
       </div>
       <div className="state-list">
-        {["UNPAIRED", "PAIRING", "PAIR_APPROVAL_REQUIRED", "PAIRED", "CONNECTED", "DISCONNECTED", "RECONNECTING"].map((state, index) => (
-          <span className={index === statusIndex(status?.state) ? "active-state" : ""} key={state}>
-            {state}
+        {["UNPAIRED", "PAIRING", "PAIR_APPROVAL_REQUIRED", "PAIRED", "CONNECTED", "DISCONNECTED", "RECONNECTING"].map((item, index) => (
+          <span className={index === statusIndex(state) ? "active-state" : ""} key={item}>
+            {item}
           </span>
         ))}
       </div>
       <div className="connector-meta">
-        <p>{agentOnline ? "Local agent connected on this machine." : "Start the native app to bring the connector online."}</p>
-        <p>{status?.backendBaseUrl ? `Backend: ${status.backendBaseUrl}` : "Backend not configured yet."}</p>
+        <p>{devices.length ? "Choose the LocalBridge agent running on this computer." : "Start the native app to bring a device online."}</p>
+        <p>Backend: {BACKEND_URL}</p>
       </div>
-      {!agentOnline ? (
-        <a className="button primary local-dashboard-link" href={CONTROL_URL}>
-          <Power size={16} /> Open LocalBridge
-        </a>
-      ) : null}
       <div className="pairing-fields">
+        <label>
+          This computer
+          <select value={selectedDeviceId} onChange={(event) => setSelectedDeviceId(event.target.value)}>
+            <option value="">No online device</option>
+            {devices.map((device) => (
+              <option value={device.deviceId} key={device.deviceId}>
+                {device.deviceName} ({device.platform})
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           6-digit pairing code
           <input
@@ -468,35 +418,32 @@ function ConnectorPanel({
         </label>
       </div>
       <div className="demo-actions">
-        <button type="button" onClick={registerDevice} disabled={busy || !agentOnline}>
-          <ShieldCheck size={16} /> Register device
+        <button type="button" onClick={createSession} disabled={busy || !selectedDeviceId}>
+          <Link2 size={16} /> Create code
         </button>
-        <button type="button" onClick={createSession} disabled={busy || !agentOnline}>
-          <Link2 size={16} /> Create session
+        <button type="button" onClick={joinSession} disabled={busy || !selectedDeviceId}>
+          <Clipboard size={16} /> Join code
         </button>
-        <button type="button" onClick={joinSession} disabled={busy || !agentOnline}>
-          <Clipboard size={16} /> Join session
-        </button>
-        <button type="button" onClick={approveSession} disabled={busy || !agentOnline}>
+        <button type="button" onClick={approveSession} disabled={busy}>
           <CheckCircle2 size={16} /> Finish pairing
         </button>
-        <button type="button" onClick={copyPairingId} disabled={!pairingId || !agentOnline}>
-          <Copy size={16} /> Copy ID
+        <button type="button" onClick={copyPairingId} disabled={!pairingId}>
+          <Copy size={16} /> Copy code
         </button>
-        <button type="button" onClick={reconnect} disabled={busy || !agentOnline}>
+        <button type="button" onClick={reconnect} disabled={busy}>
           <RefreshCw size={16} /> Reconnect
         </button>
-        <button type="button" onClick={disconnect} disabled={busy || !agentOnline}>
+        <button type="button" onClick={disconnect} disabled={busy}>
           <Unlink size={16} /> Disconnect
         </button>
-        <button type="button" onClick={removePairing} disabled={busy || !agentOnline}>
+        <button type="button" onClick={removePairing} disabled={busy}>
           <Link2 size={16} /> Remove
         </button>
       </div>
       <div className="session-summary">
         <strong>{pairingId ? `Code ${pairingId}` : "No pairing code yet"}</strong>
-        <span>{pairingId ? "Enter this 6-digit code on the other device, then finish pairing here." : "Create a code on one device to start pairing."}</span>
-        <span>{status?.hasCredentials ? "Credentials stored locally." : "Credentials will be stored locally after pairing."}</span>
+        <span>{pairingId ? "Enter this code on the other computer, then finish pairing here." : "Create a code on one device to start pairing."}</span>
+        <span>Credentials are delivered to the native agents automatically.</span>
       </div>
     </aside>
   );

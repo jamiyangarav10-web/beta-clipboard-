@@ -79,12 +79,21 @@ ENV = load_env()
 def load_identity():
     try:
         with open(IDENTITY_PATH) as f:
-            return json.load(f)
+            identity = json.load(f)
+            changed = False
+            if not identity.get("control_token"):
+                identity["control_token"] = os.urandom(24).hex()
+                changed = True
+            if changed:
+                IDENTITY_PATH.write_text(json.dumps(identity, indent=2), encoding="utf-8")
+                IDENTITY_PATH.chmod(0o600)
+            return identity
     except Exception:
         identity = {
             "device_id": "lb_" + os.urandom(18).hex(),
             "device_name": DEVICE_NAME,
             "platform": PLATFORM,
+            "control_token": os.urandom(24).hex(),
         }
         try:
             CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -168,6 +177,7 @@ def save_pairing_credentials(raw_credentials):
 
 IDENTITY = load_identity()
 DEVICE_ID = os.environ.get("DEVICE_ID") or IDENTITY.get("device_id") or ("lb_" + os.urandom(18).hex())
+CONTROL_TOKEN = os.environ.get("CONTROL_TOKEN") or IDENTITY.get("control_token") or os.urandom(24).hex()
 
 
 def tailscale_ip():
@@ -351,7 +361,37 @@ def register_with_backend():
         "deviceName": DEVICE_NAME,
         "platform": PLATFORM,
         "directEndpoint": MY_ENDPOINT,
+        "controlToken": CONTROL_TOKEN,
     })
+
+
+def poll_backend_once():
+    code, resp = backend_post("/device/poll", {"deviceId": DEVICE_ID, "controlToken": CONTROL_TOKEN})
+    if code == 404:
+        register_with_backend()
+        return
+    if code != 200:
+        return
+    credentials_payload = resp.get("credentials")
+    if credentials_payload:
+        existing = load_credentials()
+        if existing.get("shared_secret") != credentials_payload.get("sharedSecret"):
+            credentials = save_pairing_credentials(credentials_payload)
+            with state_lock:
+                state["hasCredentials"] = True
+                state["state"] = "PAIRED"
+                state["pairedDevice"] = credentials.get("paired_device", {})
+            start_sync()
+
+
+def backend_poll_loop():
+    while True:
+        try:
+            register_with_backend()
+            poll_backend_once()
+        except Exception as exc:
+            log("backend poll error: " + str(exc))
+        time.sleep(5)
 
 
 def sync_command():
@@ -535,6 +575,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    threading.Thread(target=backend_poll_loop, daemon=True).start()
     server = ThreadingHTTPServer((CONTROL_HOST, CONTROL_PORT), Handler)
     log(f"control agent listening on {CONTROL_HOST}:{CONTROL_PORT} device={DEVICE_ID} platform={PLATFORM}")
     server.serve_forever()

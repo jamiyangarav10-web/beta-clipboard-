@@ -44,3 +44,26 @@ test("invalid device rejection blocks unknown and self-pairing devices", async (
   assert.equal((await service.joinSession({ pairingId: created.body.pairingId, deviceId: "missing" })).status, 404);
   assert.equal((await service.joinSession({ pairingId: created.body.pairingId, deviceId: windows.deviceId })).status, 400);
 });
+
+test("website can list online agents and agents can poll for credentials", async () => {
+  const store = createMemoryStore();
+  await store.clear();
+  const service = new PairingService(store);
+  await service.registerDevice({ ...windows, controlToken: "windows-token" });
+  await service.registerDevice({ ...mac, controlToken: "mac-token" });
+
+  const listed = await service.listDevices();
+  assert.equal(listed.status, 200);
+  assert.deepEqual(listed.body.devices.map((device) => device.deviceId).sort(), [mac.deviceId, windows.deviceId].sort());
+
+  const created = await service.createSession({ deviceId: windows.deviceId });
+  await service.joinSession({ pairingId: created.body.pairingId, deviceId: mac.deviceId });
+  await service.approveSession({ pairingId: created.body.pairingId });
+
+  const polled = await service.pollDevice({ deviceId: mac.deviceId, controlToken: "mac-token" });
+  assert.equal(polled.status, 200);
+  assert.ok(polled.body.credentials.sharedSecret.length >= 64);
+
+  const rejected = await service.pollDevice({ deviceId: mac.deviceId, controlToken: "wrong-token" });
+  assert.equal(rejected.status, 403);
+});
