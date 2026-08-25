@@ -19,6 +19,9 @@ test("pairing code generation creates single-use approval", async () => {
   const approved = await service.approveSession({ pairingId: created.body.pairingId });
   assert.equal(approved.status, 200);
   assert.ok(approved.body.credentials.sharedSecret.length >= 64);
+  const session = await service.getSession(created.body.pairingId);
+  assert.equal(session.body.requesterDevice.deviceName, windows.deviceName);
+  assert.equal(session.body.responderDevice.deviceName, mac.deviceName);
   const replay = await service.approveSession({ pairingId: created.body.pairingId });
   assert.equal(replay.status, 409);
 });

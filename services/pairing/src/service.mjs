@@ -209,6 +209,10 @@ export class PairingService {
     if (!session || session.expiresAt <= nowMs(this.clock)) return { status: 404, body: { error: "pairing session not found" } };
     const publicSession = { ...session };
     delete publicSession.credentials?.sharedSecret;
+    const requester = await this.store.get(deviceKey(session.requesterDeviceId));
+    const responder = session.responderDeviceId ? await this.store.get(deviceKey(session.responderDeviceId)) : null;
+    publicSession.requesterDevice = requester ? publicDevice(requester) : null;
+    publicSession.responderDevice = responder ? publicDevice(responder) : null;
     return { status: 200, body: publicSession };
   }
 
