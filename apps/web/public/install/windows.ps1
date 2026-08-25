@@ -13,7 +13,7 @@ Write-Host "Downloading latest agent..."
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
 try {
-  Invoke-WebRequest -Uri "$BaseUrl/downloads/LocalBridge-Windows.zip" -OutFile $ZipPath -UseBasicParsing
+  Invoke-WebRequest -Uri "$BaseUrl/downloads/LocalBridge-Windows-python.zip" -OutFile $ZipPath -UseBasicParsing
   Write-Host "Unpacking..."
   Expand-Archive -Path $ZipPath -DestinationPath $WorkDir -Force
 
