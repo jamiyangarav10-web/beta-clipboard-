@@ -21,16 +21,14 @@ if "%PY_CMD%"=="" (
 if "%PY_CMD%"=="" (
   echo Python was not found. Installing Python for this user...
   powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile '%PYTHON_INSTALLER%' -UseBasicParsing"
-  if %ERRORLEVEL% NEQ 0 (
-    echo Could not download Python installer.
-    if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
-    exit /b 1
-  )
-  "%PYTHON_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_launcher=1 Include_test=0
-  if %ERRORLEVEL% NEQ 0 (
-    echo Python installer failed.
-    if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
-    exit /b 1
+  if !ERRORLEVEL! EQU 0 (
+    "%PYTHON_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_launcher=1 Include_test=0
+  ) else (
+    echo Could not download Python installer from python.org. Trying winget...
+    where winget >nul 2>nul
+    if !ERRORLEVEL! EQU 0 (
+      winget install --id Python.Python.3.12 --exact --source winget --scope user --silent --accept-package-agreements --accept-source-agreements
+    )
   )
   del "%PYTHON_INSTALLER%" >nul 2>nul
   set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
