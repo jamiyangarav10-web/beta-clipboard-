@@ -19,6 +19,7 @@ test("pairing code generation creates single-use approval", async () => {
   const approved = await service.approveSession({ pairingId: created.body.pairingId });
   assert.equal(approved.status, 200);
   assert.ok(approved.body.credentials.sharedSecret.length >= 64);
+  assert.equal(approved.body.credentials.transport, "cloud-relay");
   const session = await service.getSession(created.body.pairingId);
   assert.equal(session.body.requesterDevice.deviceName, windows.deviceName);
   assert.equal(session.body.responderDevice.deviceName, mac.deviceName);
@@ -111,4 +112,32 @@ test("device list keeps paired state when agents refresh registration", async ()
   assert.equal(listed.status, 200);
   assert.equal(listed.body.devices.find((device) => device.deviceId === windows.deviceId).state, "PAIRED");
   assert.equal(listed.body.devices.find((device) => device.deviceId === mac.deviceId).currentPairingId, created.body.pairingId);
+});
+
+test("paired agents can exchange relay messages", async () => {
+  const store = createMemoryStore();
+  await store.clear();
+  const service = new PairingService(store);
+  await service.registerDevice({ ...windows, controlToken: "windows-token" });
+  await service.registerDevice({ ...mac, controlToken: "mac-token" });
+
+  const created = await service.createSession({ deviceId: windows.deviceId });
+  await service.joinSession({ pairingId: created.body.pairingId, deviceId: mac.deviceId });
+  await service.approveSession({ pairingId: created.body.pairingId });
+
+  const sent = await service.sendRelayMessage({
+    deviceId: windows.deviceId,
+    controlToken: "windows-token",
+    toDeviceId: mac.deviceId,
+    message: { type: "clipboard", text: "hello relay" }
+  });
+  assert.equal(sent.status, 200);
+
+  const polled = await service.pollRelayMessages({ deviceId: mac.deviceId, controlToken: "mac-token" });
+  assert.equal(polled.status, 200);
+  assert.equal(polled.body.messages.length, 1);
+  assert.equal(polled.body.messages[0].message.text, "hello relay");
+
+  const empty = await service.pollRelayMessages({ deviceId: mac.deviceId, controlToken: "mac-token" });
+  assert.equal(empty.body.messages.length, 0);
 });

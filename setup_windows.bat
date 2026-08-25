@@ -31,6 +31,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Pr
 xcopy /E /I /Y packages "%APP_DIR%\packages" >nul
 xcopy /E /I /Y windows "%APP_DIR%\windows" >nul
 copy /Y agent.py "%APP_DIR%\agent.py" >nul
+copy /Y cloud_relay.py "%APP_DIR%\cloud_relay.py" >nul
 copy /Y requirements.txt "%APP_DIR%\requirements.txt" >nul
 
 %PY_CMD% -m pip install --user -r "%APP_DIR%\requirements.txt"

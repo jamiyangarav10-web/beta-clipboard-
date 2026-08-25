@@ -183,7 +183,7 @@ def save_pairing_credentials(raw_credentials):
             "direct_host": parse_endpoint_host(peer_endpoint),
         },
         "transport": {
-            "kind": raw_credentials.get("transport", "direct-websocket"),
+            "kind": raw_credentials.get("transport", "cloud-relay"),
             "listen_host": parse_endpoint_host(own_endpoint),
             "port": parse_endpoint_port(peer_endpoint or own_endpoint, SYNC_PORT),
         },
@@ -439,6 +439,10 @@ def backend_poll_loop():
 
 
 def sync_command():
+    transport = (load_credentials().get("transport") or {}).get("kind", "cloud-relay")
+    relay_script = os.path.join(CONFIG_DIR, "cloud_relay.py")
+    if transport == "cloud-relay" and os.path.exists(relay_script):
+        return [sys.executable, relay_script]
     if PLATFORM == "macos":
         return [sys.executable, os.path.join(CONFIG_DIR, "mac", "sync_client.py")]
     # Windows: launch the proven server.py (handles win32clipboard).
@@ -456,6 +460,9 @@ def sync_environment():
     env["LOCALBRIDGE_HOME"] = str(CONFIG_DIR)
     env["LOCALBRIDGE_ENV_PATH"] = str(ENV_PATH)
     env["LOCALBRIDGE_CREDENTIALS_PATH"] = str(CREDENTIALS_PATH)
+    env["LOCALBRIDGE_BACKEND_BASE_URL"] = BACKEND
+    env["LOCALBRIDGE_DEVICE_ID"] = DEVICE_ID
+    env["LOCALBRIDGE_CONTROL_TOKEN"] = CONTROL_TOKEN
     if creds.get("shared_secret"):
         env["LOCALBRIDGE_SECRET"] = str(creds["shared_secret"])
     if paired.get("direct_host"):

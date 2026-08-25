@@ -4,6 +4,8 @@ import { validatePairingRegistration } from "../../../packages/protocol/src/inde
 
 export const PAIRING_TTL_MS = 5 * 60 * 1000;
 export const DEVICE_TTL_MS = 10 * 60 * 1000;
+export const RELAY_MESSAGE_TTL_MS = 2 * 60 * 1000;
+export const MAX_RELAY_MESSAGES = 50;
 
 function nowMs(clock) {
   return typeof clock === "function" ? clock() : Date.now();
@@ -23,6 +25,10 @@ function deviceIndexKey() {
 
 function sessionIndexKey() {
   return "sessions:index";
+}
+
+function relayKey(id) {
+  return `relay:${id}`;
 }
 
 function randomPairingCode() {
@@ -142,7 +148,7 @@ export class PairingService {
     const sharedSecret = randomSharedSecret();
     const credentials = {
       sharedSecret,
-      transport: "direct-websocket",
+      transport: "cloud-relay",
       maxClipboardBytes: 1048576,
       devices: [
         publicDevice(requester),
@@ -202,6 +208,91 @@ export class PairingService {
         credentials: pairedSession?.credentials || null
       }
     };
+  }
+
+  async sendRelayMessage(body) {
+    const auth = await this.authorizeRelayDevice(body);
+    if (!auth.ok) return auth.result;
+    const message = body?.message;
+    if (!message || typeof message !== "object") {
+      return { status: 400, body: { error: "message required" } };
+    }
+    if (!["clipboard", "file"].includes(message.type)) {
+      return { status: 400, body: { error: "unsupported relay message type" } };
+    }
+    if (message.type === "clipboard" && typeof message.text !== "string") {
+      return { status: 400, body: { error: "clipboard text required" } };
+    }
+    if (message.type === "file") {
+      if (typeof message.name !== "string" || typeof message.data !== "string") {
+        return { status: 400, body: { error: "file name and data required" } };
+      }
+    }
+    const toDeviceId = body?.toDeviceId || auth.peer.deviceId;
+    if (toDeviceId !== auth.peer.deviceId) {
+      return { status: 403, body: { error: "relay target is not paired device" } };
+    }
+    const key = relayKey(toDeviceId);
+    const queue = await this.store.get(key) || [];
+    const createdAt = nowMs(this.clock);
+    const clean = queue.filter((item) => item.expiresAt > createdAt).slice(-MAX_RELAY_MESSAGES + 1);
+    clean.push({
+      id: crypto.randomUUID(),
+      fromDeviceId: auth.device.deviceId,
+      toDeviceId,
+      message,
+      createdAt,
+      expiresAt: createdAt + RELAY_MESSAGE_TTL_MS
+    });
+    await this.store.set(key, clean);
+    return { status: 200, body: { queued: true, id: clean[clean.length - 1].id } };
+  }
+
+  async pollRelayMessages(body) {
+    const auth = await this.authorizeRelayDevice(body);
+    if (!auth.ok) return auth.result;
+    const key = relayKey(auth.device.deviceId);
+    const now = nowMs(this.clock);
+    const queue = await this.store.get(key) || [];
+    const deliver = queue.filter((item) => item.expiresAt > now && item.fromDeviceId === auth.peer.deviceId);
+    const remaining = queue.filter((item) => item.expiresAt > now && item.fromDeviceId !== auth.peer.deviceId);
+    if (remaining.length !== queue.length) {
+      await this.store.set(key, remaining);
+    }
+    return {
+      status: 200,
+      body: {
+        messages: deliver.map((item) => ({
+          id: item.id,
+          fromDeviceId: item.fromDeviceId,
+          message: item.message,
+          createdAt: item.createdAt
+        }))
+      }
+    };
+  }
+
+  async authorizeRelayDevice(body) {
+    if (!body || typeof body.deviceId !== "string" || typeof body.controlToken !== "string") {
+      return { ok: false, result: { status: 400, body: { error: "deviceId and controlToken required" } } };
+    }
+    const device = await this.store.get(deviceKey(body.deviceId));
+    if (!device || device.expiresAt <= nowMs(this.clock)) {
+      return { ok: false, result: { status: 404, body: { error: "registered device not found" } } };
+    }
+    if (device.controlTokenHash && device.controlTokenHash !== hashToken(body.controlToken)) {
+      return { ok: false, result: { status: 403, body: { error: "invalid device token" } } };
+    }
+    const session = device.currentPairingId ? await this.store.get(sessionKey(device.currentPairingId)) : null;
+    if (!session?.used || !session.credentials) {
+      return { ok: false, result: { status: 409, body: { error: "device is not paired" } } };
+    }
+    const peerDeviceId = session.requesterDeviceId === device.deviceId ? session.responderDeviceId : session.requesterDeviceId;
+    const peer = peerDeviceId ? await this.store.get(deviceKey(peerDeviceId)) : null;
+    if (!peer) {
+      return { ok: false, result: { status: 404, body: { error: "paired device not found" } } };
+    }
+    return { ok: true, device, peer, session };
   }
 
   async getSession(pairingId) {

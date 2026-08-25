@@ -8,6 +8,7 @@ PLIST="$HOME/Library/LaunchAgents/com.localbridge.client.plist"
 
 mkdir -p "$APP_DIR/mac" "$LOG_DIR" "$HOME/Library/LaunchAgents"
 cp agent.py "$APP_DIR/agent.py"
+cp cloud_relay.py "$APP_DIR/cloud_relay.py"
 cp mac/sync_client.py "$APP_DIR/mac/sync_client.py"
 cp requirements.txt "$APP_DIR/requirements.txt"
 

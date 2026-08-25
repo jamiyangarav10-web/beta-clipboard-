@@ -15,6 +15,7 @@ rm -f "$PUBLIC_DOWNLOADS/LocalBridge-Mac.zip" "$PUBLIC_DOWNLOADS/LocalBridge-Win
 cp "$ROOT/setup_mac.command" "$WORK_DIR/mac/LocalBridge-Mac/setup_mac.command"
 cp "$ROOT/requirements.txt" "$WORK_DIR/mac/LocalBridge-Mac/requirements.txt"
 cp "$ROOT/clients/native/agent.py" "$WORK_DIR/mac/LocalBridge-Mac/agent.py"
+cp "$ROOT/clients/native/cloud_relay.py" "$WORK_DIR/mac/LocalBridge-Mac/cloud_relay.py"
 cp "$ROOT/clients/native/mac/sync_client.py" "$WORK_DIR/mac/LocalBridge-Mac/mac/sync_client.py"
 chmod +x "$WORK_DIR/mac/LocalBridge-Mac/setup_mac.command"
 cat > "$WORK_DIR/mac/LocalBridge-Mac/README.txt" <<'EOF'
@@ -30,6 +31,7 @@ EOF
 cp "$ROOT/setup_windows.bat" "$WORK_DIR/windows/LocalBridge-Windows/setup_windows.bat"
 cp "$ROOT/requirements.txt" "$WORK_DIR/windows/LocalBridge-Windows/requirements.txt"
 cp "$ROOT/clients/native/agent.py" "$WORK_DIR/windows/LocalBridge-Windows/agent.py"
+cp "$ROOT/clients/native/cloud_relay.py" "$WORK_DIR/windows/LocalBridge-Windows/cloud_relay.py"
 cp "$ROOT/windows/server.py" "$WORK_DIR/windows/LocalBridge-Windows/windows/server.py"
 cp -R "$ROOT/packages/shared/localbridge" "$WORK_DIR/windows/LocalBridge-Windows/packages/shared/localbridge"
 find "$WORK_DIR/windows/LocalBridge-Windows/packages" -name "__pycache__" -type d -prune -exec rm -rf {} +

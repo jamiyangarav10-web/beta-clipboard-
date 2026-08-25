@@ -57,6 +57,14 @@ export const handler = async (event) => {
       const result = await service.approveSession(await readBody(event));
       return json(result.status, result.body);
     }
+    if (method === "POST" && path === "/relay/send") {
+      const result = await service.sendRelayMessage(await readBody(event));
+      return json(result.status, result.body);
+    }
+    if (method === "POST" && path === "/relay/poll") {
+      const result = await service.pollRelayMessages(await readBody(event));
+      return json(result.status, result.body);
+    }
     if (method === "GET" && path.startsWith("/session/")) {
       const pairingId = decodeURIComponent(path.slice("/session/".length));
       const result = await service.getSession(pairingId);
