@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
 set "APP_DIR=%LOCALAPPDATA%\LocalBridge"
@@ -61,10 +61,27 @@ copy /Y requirements.txt "%APP_DIR%\requirements.txt" >nul
 copy /Y "%RUNNER%" "%STARTUP%\LocalBridge.vbs" >nul
 wscript "%RUNNER%"
 
-timeout /t 2 /nobreak >nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-RestMethod -Uri 'http://127.0.0.1:17833/api/status' -TimeoutSec 3 | Out-Null; exit 0 } catch { exit 1 }"
-if %ERRORLEVEL% NEQ 0 (
+set "AGENT_READY=0"
+for /L %%I in (1,1,15) do (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-RestMethod -Uri 'http://127.0.0.1:17833/api/status' -TimeoutSec 2 | Out-Null; exit 0 } catch { exit 1 }"
+  if !ERRORLEVEL! EQU 0 (
+    set "AGENT_READY=1"
+    goto agent_ready
+  )
+  timeout /t 2 /nobreak >nul
+)
+
+:agent_ready
+if not "%AGENT_READY%"=="1" (
   echo LocalBridge was installed, but the agent did not answer on http://127.0.0.1:17833.
+  echo.
+  echo Agent log:
+  if exist "%APP_DIR%\agent.log" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -Path '%APP_DIR%\agent.log' -Tail 80"
+  ) else (
+    echo No agent.log file was created.
+  )
+  echo.
   echo Run this file to see the exact error:
   echo "%DIAG%"
   if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
