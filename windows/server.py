@@ -5,6 +5,7 @@
 - No clipboard content in logs.
 """
 import asyncio
+import base64
 import hmac
 import json
 import logging
@@ -23,7 +24,7 @@ if SHARED_PATH.exists():
     sys.path.insert(0, str(SHARED_PATH))
 
 from localbridge.config import merged_agent_config
-from localbridge.protocol import clipboard_message, parse_json, validate_auth_message, validate_clipboard_message
+from localbridge.protocol import clipboard_message, parse_json, validate_auth_message, validate_clipboard_message, validate_file_message
 from localbridge.security import block_sensitive as shared_block_sensitive
 from localbridge.security import secure_compare
 
@@ -55,6 +56,8 @@ LISTEN_PORT = int(cfg.get("port", os.getenv("LOCALBRIDGE_PORT", "8765")))
 ALLOWED_PEER = cfg.get("allowed_peer", "")
 EXPECTED_SECRET = cfg.get("secret", "")
 MAX_MESSAGE_BYTES = int(cfg.get("max_clipboard_bytes", "1048576"))
+MAX_TRANSFER_BYTES = int(os.getenv("LOCALBRIDGE_MAX_TRANSFER_BYTES", str(max(MAX_MESSAGE_BYTES, 8 * 1024 * 1024))))
+MAX_WIRE_BYTES = (MAX_TRANSFER_BYTES * 2) + 4096
 MAX_CLIENTS = 1
 CONNECT_TIMEOUT = 5
 CLOSE_CODE_AUTH = 4401
@@ -78,6 +81,8 @@ log = logging.getLogger("localbridge")
 clients = set()
 connected_peer: Optional[str] = None
 last_clipboard: str = ""
+OUTBOX_DIR = APP_DIR / "outbox"
+DOWNLOAD_DIR = Path.home() / "Downloads" / "LocalBridge"
 
 
 def block_sensitive(text: str) -> bool:
@@ -119,6 +124,64 @@ async def send_to_client(ws, message: dict) -> None:
         await ws.send(json.dumps(message))
     except Exception as exc:
         log.warning("Send failed: %s", exc)
+
+
+def safe_filename(name: str) -> str:
+    cleaned = "".join(ch for ch in name if ch not in '<>:"/\\|?*').strip().strip(".")
+    return cleaned[:160] or "localbridge-file"
+
+
+def unique_path(directory: Path, name: str) -> Path:
+    base = safe_filename(name)
+    target = directory / base
+    if not target.exists():
+        return target
+    stem = target.stem
+    suffix = target.suffix
+    for index in range(1, 1000):
+        candidate = directory / f"{stem}-{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+    return directory / f"{stem}-{int(time.time())}{suffix}"
+
+
+def save_received_file(message: dict) -> Optional[Path]:
+    validation = validate_file_message(message, MAX_TRANSFER_BYTES)
+    if not validation.ok:
+        log.warning("Rejected invalid file message: %s", validation.reason)
+        return None
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    target = unique_path(DOWNLOAD_DIR, str(message.get("name", "localbridge-file")))
+    data = base64.b64decode(str(message.get("data", "")).encode("ascii"), validate=True)
+    target.write_bytes(data)
+    return target
+
+
+async def send_outbox_file(client, path: Path) -> bool:
+    try:
+        message = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        log.warning("Could not read outbox file %s: %s", path.name, exc)
+        try:
+            path.unlink()
+        except Exception:
+            pass
+        return False
+    validation = validate_file_message(message, MAX_TRANSFER_BYTES)
+    if not validation.ok:
+        log.warning("Rejected outbox file %s: %s", path.name, validation.reason)
+        try:
+            path.unlink()
+        except Exception:
+            pass
+        return False
+    await client.send(json.dumps(message))
+    log.info("File sent to client (%s, %d bytes)", safe_filename(str(message.get("name", ""))), int(message.get("size") or 0))
+    try:
+        path.unlink()
+    except Exception:
+        pass
+    return True
 
 
 async def handle_client(websocket) -> None:
@@ -181,7 +244,7 @@ async def handle_client(websocket) -> None:
     try:
         async for raw_message in websocket:
             msg_len = len(raw_message)
-            if msg_len > MAX_MESSAGE_BYTES:
+            if msg_len > MAX_WIRE_BYTES:
                 log.warning("Oversized message from %s: %d bytes", peer, msg_len)
                 await send_to_client(websocket, {"type": "error", "reason": "message too large"})
                 continue
@@ -191,7 +254,16 @@ async def handle_client(websocket) -> None:
             except Exception:
                 continue
 
-            if not message or message.get("type") != "clipboard":
+            if not message:
+                continue
+
+            if message.get("type") == "file":
+                target = save_received_file(message)
+                if target:
+                    log.info("File saved from client: %s", target)
+                continue
+
+            if message.get("type") != "clipboard":
                 continue
 
             if not validate_clipboard_message(message, MAX_MESSAGE_BYTES).ok:
@@ -256,6 +328,26 @@ async def monitor_windows_clipboard() -> None:
         await asyncio.sleep(0.4)
 
 
+async def monitor_outbox() -> None:
+    while True:
+        try:
+            OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
+            if clients:
+                for path in sorted(OUTBOX_DIR.glob("*.json")):
+                    disconnected = []
+                    for client in list(clients):
+                        try:
+                            await send_outbox_file(client, path)
+                        except Exception as exc:
+                            log.warning("Outbox send failed: %s", exc)
+                            disconnected.append(client)
+                    for client in disconnected:
+                        clients.discard(client)
+        except Exception as exc:
+            log.error("Outbox monitor error: %s", exc)
+        await asyncio.sleep(0.8)
+
+
 async def main() -> None:
     global cfg, LISTEN_HOST, LISTEN_PORT, ALLOWED_PEER, EXPECTED_SECRET, MAX_MESSAGE_BYTES
 
@@ -289,9 +381,9 @@ async def main() -> None:
         handle_client,
         host=LISTEN_HOST,
         port=LISTEN_PORT,
-        max_size=MAX_MESSAGE_BYTES,
+        max_size=MAX_WIRE_BYTES,
     ):
-        await monitor_windows_clipboard()
+        await asyncio.gather(monitor_windows_clipboard(), monitor_outbox())
 
 
 if __name__ == "__main__":

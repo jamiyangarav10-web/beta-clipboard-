@@ -9,8 +9,10 @@ export const PairingState = Object.freeze({
 });
 
 export const ClipboardMessageType = "clipboard";
+export const FileMessageType = "file";
 export const AuthMessageType = "auth";
 export const MaxClipboardBytes = 1024 * 1024;
+export const MaxTransferBytes = 8 * 1024 * 1024;
 
 export function utf8Bytes(value) {
   return new TextEncoder().encode(value).byteLength;
@@ -28,6 +30,31 @@ export function validateClipboardMessage(message, maxBytes = MaxClipboardBytes) 
   }
   if (utf8Bytes(message.text) > maxBytes) {
     return { ok: false, reason: "clipboard payload too large" };
+  }
+  return { ok: true };
+}
+
+export function validateFileMessage(message, maxBytes = MaxTransferBytes) {
+  if (!message || typeof message !== "object") {
+    return { ok: false, reason: "message must be an object" };
+  }
+  if (message.type !== FileMessageType) {
+    return { ok: false, reason: "unsupported message type" };
+  }
+  if (typeof message.name !== "string" || !message.name.trim()) {
+    return { ok: false, reason: "file name is missing" };
+  }
+  if (typeof message.data !== "string" || !message.data) {
+    return { ok: false, reason: "file data is missing" };
+  }
+  let decoded;
+  try {
+    decoded = Buffer.from(message.data, "base64");
+  } catch {
+    return { ok: false, reason: "file data is not valid base64" };
+  }
+  if (decoded.length > maxBytes) {
+    return { ok: false, reason: "file payload too large" };
   }
   return { ok: true };
 }

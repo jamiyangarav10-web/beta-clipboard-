@@ -133,6 +133,11 @@ const COPY = {
     reconnect: "Reconnect",
     disconnect: "Disconnect",
     remove: "Remove",
+    sendFile: "Send file",
+    chooseFile: "Choose file",
+    fileQueued: "File queued. It will be saved on the paired device.",
+    fileTooLarge: "This beta supports files up to 8 MB.",
+    fileSendError: "Could not send that file.",
     noCode: "No pairing code yet",
     codeSummary: "Enter this code on the other computer, then finish pairing here.",
     noCodeSummary: "Create a code on one device to start pairing.",
@@ -144,17 +149,17 @@ const COPY = {
     stepPair: "Pair",
     stepPairBody: "Choose each online device on this website and pair with a 6-digit code.",
     stepCopy: "Copy & paste",
-    stepCopyBody: "After pairing, the native agents sync clipboard text directly.",
+    stepCopyBody: "After pairing, native agents sync clipboard text and can send small files or images.",
     chooseDeviceTitle: "Choose your device",
     downloadsText: "Download the beta installer on each computer, run setup, then return here to pair your devices.",
     privacy: "Privacy and security",
-    privacyTitle: "The website pairs devices. It does not sync clipboard contents.",
+    privacyTitle: "The website pairs devices and sends files only through your local agent.",
     securityShort: "Short-lived pairing",
     securityShortBody: "Pairing sessions expire and are single-use.",
     securityNative: "Native-only clipboard access",
     securityNativeBody: "Clipboard reads and writes happen in the Windows and macOS agents, not browser JavaScript.",
     securityDirect: "Direct sync path",
-    securityDirectBody: "After pairing, agents use the authenticated WebSocket clipboard engine.",
+    securityDirectBody: "After pairing, agents use the authenticated WebSocket engine for clipboard text and file transfer.",
     dashboard: "Dashboard",
     online: "online",
     noAgent: "No agent online",
@@ -231,6 +236,11 @@ const COPY = {
     reconnect: "Дахин холбох",
     disconnect: "Салгах",
     remove: "Цэвэрлэх",
+    sendFile: "Файл явуулах",
+    chooseFile: "Файл сонгох",
+    fileQueued: "Файл queue-д орлоо. Нөгөө төхөөрөмж дээр хадгалагдана.",
+    fileTooLarge: "Энэ beta дээр 8 MB хүртэл файл дэмжинэ.",
+    fileSendError: "Энэ файлыг явуулж чадсангүй.",
     noCode: "Pairing code алга",
     codeSummary: "Энэ code-г нөгөө компьютер дээр оруулаад энд pairing-г дуусгана.",
     noCodeSummary: "Pair эхлүүлэхийн тулд нэг төхөөрөмж дээр code үүсгэнэ.",
@@ -242,17 +252,17 @@ const COPY = {
     stepPair: "Pair хийх",
     stepPairBody: "Online device-үүдээ сонгоод 6 оронтой code-оор холбоно.",
     stepCopy: "Copy & paste",
-    stepCopyBody: "Pair хийсний дараа native agent-ууд clipboard text-ийг шууд sync хийнэ.",
+    stepCopyBody: "Pair хийсний дараа native agent-ууд clipboard text sync хийж, жижиг файл/зураг явуулна.",
     chooseDeviceTitle: "Төхөөрөмжөө сонго",
     downloadsText: "Компьютер бүр дээр beta installer татаж setup ажиллуулаад, дараа нь энд буцаж pair хийнэ.",
     privacy: "Нууцлал ба аюулгүй байдал",
-    privacyTitle: "Website зөвхөн төхөөрөмж pair хийнэ. Clipboard content sync хийхгүй.",
+    privacyTitle: "Website төхөөрөмж pair хийж, файлыг зөвхөн таны local agent-аар дамжуулна.",
     securityShort: "Богино хугацааны pairing",
     securityShortBody: "Pairing session хугацаатай бөгөөд нэг удаа ашиглагдана.",
     securityNative: "Clipboard access зөвхөн native",
     securityNativeBody: "Clipboard унших/бичих үйлдэл browser биш Windows/macOS agent дээр хийгдэнэ.",
     securityDirect: "Шууд sync зам",
-    securityDirectBody: "Pair хийсний дараа agent-ууд authenticated WebSocket engine ашиглана.",
+    securityDirectBody: "Pair хийсний дараа agent-ууд clipboard text болон file transfer-д authenticated WebSocket engine ашиглана.",
     dashboard: "Самбар",
     online: "online",
     noAgent: "Online agent алга",
@@ -514,6 +524,29 @@ function App() {
     setMessage(t.cleared);
   };
 
+  const sendFile = async (file: File | null) => {
+    if (!file) return;
+    if (!connectionReady) {
+      setMessage(t.startThisComputer);
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setMessage(t.fileTooLarge);
+      return;
+    }
+    try {
+      const data = await fileToBase64(file);
+      await callAgent("/api/send-file", {
+        name: file.name,
+        mime: file.type || "application/octet-stream",
+        data,
+      });
+      setMessage(t.fileQueued);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t.fileSendError);
+    }
+  };
+
   return (
     <main>
       <header className="topbar">
@@ -574,6 +607,7 @@ function App() {
           reconnect={reconnect}
           disconnect={disconnect}
           removePairing={removePairing}
+          sendFile={sendFile}
           copyPairingId={copyPairingId}
           peerName={peerName}
           connectionReady={connectionReady}
@@ -698,6 +732,7 @@ function ConnectorPanel({
   reconnect,
   disconnect,
   removePairing,
+  sendFile,
   copyPairingId,
   peerName,
   connectionReady,
@@ -724,6 +759,7 @@ function ConnectorPanel({
   reconnect: () => Promise<void>;
   disconnect: () => Promise<void>;
   removePairing: () => Promise<void>;
+  sendFile: (file: File | null) => Promise<void>;
   copyPairingId: () => Promise<void>;
   peerName: string;
   connectionReady: boolean;
@@ -839,6 +875,17 @@ function ConnectorPanel({
           <Link2 size={16} /> {t.remove}
         </button>
       </div>
+      <label className="file-send">
+        <span>{t.sendFile}</span>
+        <input
+          type="file"
+          disabled={busy || !connectionReady}
+          onChange={(event) => {
+            void sendFile(event.currentTarget.files?.[0] || null);
+            event.currentTarget.value = "";
+          }}
+        />
+      </label>
       <div className="session-summary">
         <strong>{pairingId ? `Code ${pairingId}` : t.noCode}</strong>
         <span>{pairingId ? t.codeSummary : t.noCodeSummary}</span>
@@ -947,6 +994,18 @@ async function fetchLocalAgentStatus() {
     }
   }
   throw lastError instanceof Error ? lastError : new Error("LocalBridge agent not found");
+}
+
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read file."));
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      resolve(value.includes(",") ? value.split(",", 2)[1] : value);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function PlatformIcon({ platform, size = 22 }: { platform?: string; size?: number }) {

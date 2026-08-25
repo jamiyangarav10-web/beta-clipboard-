@@ -18,11 +18,13 @@ import os
 import sys
 import json
 import time
+import base64
 import socket
 import subprocess
 import threading
 import urllib.request
 import urllib.error
+import uuid
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -36,9 +38,11 @@ else:
 ENV_PATH = CONFIG_DIR / ".env"
 IDENTITY_PATH = CONFIG_DIR / "identity.json"
 CREDENTIALS_PATH = CONFIG_DIR / "credentials.json"
+OUTBOX_DIR = CONFIG_DIR / "outbox"
 CONTROL_PORT = int(os.environ.get("CONTROL_PORT", "17833"))
 CONTROL_HOST = os.environ.get("CONTROL_HOST", "127.0.0.1")
 SYNC_PORT = int(os.environ.get("SYNC_PORT", "8765"))
+MAX_TRANSFER_BYTES = int(os.environ.get("LOCALBRIDGE_MAX_TRANSFER_BYTES", str(8 * 1024 * 1024)))
 BACKEND = os.environ.get(
     "BACKEND_BASE_URL",
     "https://clipboardbeta.netlify.app/.netlify/functions/pairing",
@@ -109,6 +113,42 @@ def load_credentials():
         return json.loads(CREDENTIALS_PATH.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+def safe_filename(name):
+    cleaned = "".join(ch for ch in str(name or "") if ch not in '<>:"/\\|?*').strip().strip(".")
+    return cleaned[:160] or "localbridge-file"
+
+
+def queue_outbox_file(payload):
+    if not load_credentials().get("shared_secret"):
+        raise ValueError("Pair devices before sending files.")
+    name = safe_filename(payload.get("name"))
+    mime = str(payload.get("mime") or "application/octet-stream")[:120]
+    data = payload.get("data")
+    if not isinstance(data, str) or not data:
+        raise ValueError("File data is missing.")
+    try:
+        decoded = base64.b64decode(data.encode("ascii"), validate=True)
+    except Exception:
+        raise ValueError("File data is invalid.")
+    if len(decoded) > MAX_TRANSFER_BYTES:
+        raise ValueError("File is too large for this beta.")
+    OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
+    message = {
+        "type": "file",
+        "name": name,
+        "mime": mime,
+        "data": base64.b64encode(decoded).decode("ascii"),
+        "size": len(decoded),
+    }
+    target = OUTBOX_DIR / f"{int(time.time())}-{uuid.uuid4().hex}.json"
+    target.write_text(json.dumps(message), encoding="utf-8")
+    try:
+        target.chmod(0o600)
+    except Exception:
+        pass
+    return {"queued": True, "name": name, "size": len(decoded)}
 
 
 def parse_endpoint_host(endpoint):
@@ -594,6 +634,15 @@ class Handler(BaseHTTPRequestHandler):
                 state["state"] = "UNPAIRED"
                 state["pairedDevice"] = {}
             self._send(200, dict(state))
+            return
+
+        if self.path == "/api/send-file":
+            try:
+                result = queue_outbox_file(body)
+                start_sync()
+                self._send(200, result)
+            except Exception as exc:
+                self._send(400, {"error": str(exc)})
             return
 
         self._send(404, {"error": "not found"})

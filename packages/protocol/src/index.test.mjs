@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PairingState, validateAuthMessage, validateClipboardMessage } from "./index.mjs";
+import { PairingState, validateAuthMessage, validateClipboardMessage, validateFileMessage } from "./index.mjs";
 
 test("pairing state machine includes required consumer states", () => {
   assert.equal(PairingState.UNPAIRED, "UNPAIRED");
@@ -11,6 +11,12 @@ test("pairing state machine includes required consumer states", () => {
 test("clipboard validation rejects oversized payloads", () => {
   const message = { type: "clipboard", text: "abcdef" };
   assert.deepEqual(validateClipboardMessage(message, 5), { ok: false, reason: "clipboard payload too large" });
+});
+
+test("file validation rejects oversized payloads", () => {
+  const message = { type: "file", name: "note.txt", data: Buffer.from("abcdef").toString("base64"), size: 6 };
+  assert.equal(validateFileMessage(message, 6).ok, true);
+  assert.deepEqual(validateFileMessage(message, 5), { ok: false, reason: "file payload too large" });
 });
 
 test("auth validation rejects short secrets", () => {
