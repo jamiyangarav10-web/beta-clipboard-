@@ -679,10 +679,10 @@ function App() {
           </div>
         </div>
         <div className="download-grid">
-          <a className="download-card" href="/downloads/LocalBridge-Windows.zip">
+          <a className="download-card" href="/downloads/LocalBridge-Windows-python.zip">
             <PlatformIcon platform="windows" size={26} />
             <strong>Windows</strong>
-            <span>LocalBridge-Windows.zip</span>
+            <span>LocalBridge-Windows-python.zip</span>
           </a>
           <a className="download-card" href="/downloads/LocalBridge-Mac.zip">
             <PlatformIcon platform="macos" size={26} />
