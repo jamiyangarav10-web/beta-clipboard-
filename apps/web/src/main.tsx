@@ -35,6 +35,9 @@ type Device = {
   directEndpoint?: string;
   state?: PairingState;
   currentPairingId?: string | null;
+  hasCredentials?: boolean;
+  syncEnabled?: boolean;
+  engineRunning?: boolean;
 };
 
 type Language = "en" | "mn";
@@ -47,6 +50,8 @@ type AgentStatus = {
   platform: string;
   state: PairingState;
   hasCredentials: boolean;
+  syncEnabled: boolean;
+  engineRunning: boolean;
   pairedDevice?: {
     device_id?: string;
     device_name?: string;
@@ -273,6 +278,7 @@ function App() {
   const [session, setSession] = useState<PairingSession | null>(null);
   const [joinPairingId, setJoinPairingId] = useState("");
   const [state, setState] = useState<PairingState>("UNPAIRED");
+  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [agentBaseUrl, setAgentBaseUrl] = useState(LOCAL_AGENT_URLS[0]);
   const t = COPY[language];
   const [message, setMessage] = useState(t.installStart);
@@ -293,8 +299,10 @@ function App() {
       (device) => device.deviceId !== selectedDevice.deviceId && device.currentPairingId === selectedDevice.currentPairingId
     ) || null;
   }, [devices, selectedDevice, session]);
-  const effectiveState = selectedDevice?.state === "PAIRED" || selectedDevice?.state === "CONNECTED" ? "CONNECTED" : state;
-  const connectionReady = Boolean(pairedDevice && (effectiveState === "PAIRED" || effectiveState === "CONNECTED"));
+  const syncActive = Boolean(agentStatus?.syncEnabled && agentStatus?.engineRunning && agentStatus?.state === "CONNECTED");
+  const localPaired = Boolean(agentStatus?.hasCredentials || agentStatus?.pairedDevice?.device_id);
+  const effectiveState: PairingState = syncActive ? "CONNECTED" : localPaired ? "PAIRED" : state;
+  const connectionReady = Boolean(pairedDevice && (localPaired || syncActive || session?.used));
   const peerName = pairedDevice?.deviceName || (connectionReady ? t.pairedDevice : t.waitingPeer);
 
   useEffect(() => {
@@ -309,11 +317,15 @@ function App() {
         const { data, baseUrl } = await fetchLocalAgentStatus();
         if (!mounted) return;
         setAgentBaseUrl(baseUrl);
+        setAgentStatus(data);
         const localDevice: Device = {
           deviceId: data.deviceId,
           deviceName: data.deviceName,
           platform: data.platform,
           state: data.state,
+          hasCredentials: data.hasCredentials,
+          syncEnabled: data.syncEnabled,
+          engineRunning: data.engineRunning,
         };
         const onlineDevices = [localDevice];
         if (data.pairedDevice?.device_id) {
@@ -323,13 +335,19 @@ function App() {
             platform: data.pairedDevice.platform || "device",
             directEndpoint: data.pairedDevice.direct_host ? `ws://${data.pairedDevice.direct_host}` : "",
             state: data.state,
+            hasCredentials: data.hasCredentials,
+            syncEnabled: data.syncEnabled,
+            engineRunning: data.engineRunning,
           });
         }
         setDevices(onlineDevices);
         setSelectedDeviceId(data.deviceId);
-        if (data.state === "PAIRED" || data.state === "CONNECTED") {
+        if (data.syncEnabled && data.engineRunning && data.state === "CONNECTED") {
           setState("CONNECTED");
           setMessage(t.pairedDone);
+        } else if (data.hasCredentials || data.pairedDevice?.device_id || data.state === "PAIRED") {
+          setState("PAIRED");
+          setMessage(t.syncStarting);
         } else {
           setState(data.state || "UNPAIRED");
           setMessage(t.chooseDevice);
@@ -338,6 +356,7 @@ function App() {
         if (!mounted) return;
         setDevices([]);
         setSelectedDeviceId("");
+        setAgentStatus(null);
         setState("UNPAIRED");
         setMessage(t.browserBlocked);
       }
@@ -364,7 +383,7 @@ function App() {
         const data = (await response.json()) as PairingSession;
         if (!mounted) return;
         setSession(data);
-        setState(data.state);
+        setState((current) => (current === "CONNECTED" || current === "PAIRED" ? current : data.state));
       } catch {
         // Local agent status remains the source of truth if session polling is blocked.
       }
@@ -558,6 +577,8 @@ function App() {
           copyPairingId={copyPairingId}
           peerName={peerName}
           connectionReady={connectionReady}
+          syncActive={syncActive}
+          localPaired={localPaired}
           pairedDevice={pairedDevice}
           agentBaseUrl={agentBaseUrl}
           localAgentUrls={LOCAL_AGENT_URLS}
@@ -636,7 +657,7 @@ function App() {
               </div>
             ))}
           </div>
-          <p className="last-connection">{t.lastConnection}: {connectionReady ? `${selectedDevice?.deviceName} -> ${pairedDevice?.deviceName}` : t.waiting}</p>
+          <p className="last-connection">{t.lastConnection}: {connectionReady ? `${selectedDevice?.deviceName} -> ${pairedDevice?.deviceName} (${effectiveState})` : t.waiting}</p>
         </div>
       </section>
 
@@ -680,6 +701,8 @@ function ConnectorPanel({
   copyPairingId,
   peerName,
   connectionReady,
+  syncActive,
+  localPaired,
   pairedDevice,
   agentBaseUrl,
   localAgentUrls,
@@ -704,6 +727,8 @@ function ConnectorPanel({
   copyPairingId: () => Promise<void>;
   peerName: string;
   connectionReady: boolean;
+  syncActive: boolean;
+  localPaired: boolean;
   pairedDevice: Device | null;
   agentBaseUrl: string;
   localAgentUrls: string[];
@@ -723,7 +748,7 @@ function ConnectorPanel({
           <div>
             <strong>{t.connectedTitle}</strong>
             <span>{t.connectedTo}: {pairedDevice?.deviceName} ({pairedDevice?.platform})</span>
-            <span>{t.connectedBody}</span>
+            <span>{syncActive ? t.connectedBody : t.syncWaiting}</span>
           </div>
         </div>
       )}
@@ -751,6 +776,8 @@ function ConnectorPanel({
         selectedDevice={selectedDevice}
         pairedDevice={pairedDevice}
         pairingId={pairingId}
+        syncActive={syncActive}
+        localPaired={localPaired}
         t={t}
       />
       <div className="connector-meta">
@@ -846,6 +873,8 @@ function PairingProgress({
   selectedDevice,
   pairedDevice,
   pairingId,
+  syncActive,
+  localPaired,
   t,
 }: {
   session: PairingSession | null;
@@ -853,12 +882,13 @@ function PairingProgress({
   selectedDevice: Device | null;
   pairedDevice: Device | null;
   pairingId: string;
+  syncActive: boolean;
+  localPaired: boolean;
   t: (typeof COPY)[Language];
 }) {
-  const hasCode = Boolean(pairingId || session?.pairingId);
-  const hasJoined = Boolean(session?.responderDeviceId || pairedDevice);
-  const isPaired = state === "PAIRED" || state === "CONNECTED" || Boolean(session?.used);
-  const syncActive = state === "CONNECTED";
+  const hasCode = Boolean(pairingId || session?.pairingId || localPaired || syncActive);
+  const hasJoined = Boolean(session?.responderDeviceId || pairedDevice || localPaired || syncActive);
+  const isPaired = localPaired || state === "PAIRED" || state === "CONNECTED" || Boolean(session?.used);
   const steps = [
     {
       label: t.progressThisDevice,
