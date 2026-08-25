@@ -20,7 +20,7 @@ if "%PY_CMD%"=="" (
 if "%PY_CMD%"=="" (
   echo Python was not found.
   echo Install Python 3 from https://www.python.org/downloads/ and check "Add python.exe to PATH".
-  pause
+  if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
   exit /b 1
 )
 
@@ -67,10 +67,10 @@ if %ERRORLEVEL% NEQ 0 (
   echo LocalBridge was installed, but the agent did not answer on http://127.0.0.1:17833.
   echo Run this file to see the exact error:
   echo "%DIAG%"
-  pause
+  if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
   exit /b 1
 )
 
 echo LocalBridge is installed and running.
 echo Open https://clipboardbeta.netlify.app/#connect to pair this device.
-pause
+if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause

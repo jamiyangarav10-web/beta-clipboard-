@@ -46,4 +46,6 @@ launchctl kickstart -k "gui/$(id -u)/com.localbridge.client"
 
 echo "LocalBridge is installed and running."
 echo "Open https://clipboardbeta.netlify.app/#connect to pair this device."
-read -p "Press Enter to close..."
+if [ "${LOCALBRIDGE_NONINTERACTIVE:-0}" != "1" ]; then
+  read -p "Press Enter to close..."
+fi

@@ -468,6 +468,59 @@ p {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.install-commands {
+  border: 1px solid #dbe3dd;
+  border-radius: 8px;
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+}
+
+.install-commands p {
+  margin: 0.35rem 0 0;
+}
+
+.command-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.command-card {
+  background: #fff;
+  border: 1px solid #dbe3dd;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+}
+
+.command-card div {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.command-card code {
+  background: #f2f5f7;
+  border-radius: 6px;
+  color: #17201b;
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  padding: 0.75rem;
+}
+
+.command-card button {
+  background: #17201b;
+  color: #fff;
+  justify-self: start;
+  min-height: 38px;
+  padding: 0.55rem 0.8rem;
+}
+
 .download-card {
   align-items: flex-start;
   background: #fff;
@@ -604,7 +657,8 @@ summary {
 
   .steps,
   .security-grid,
-  .download-grid {
+  .download-grid,
+  .command-grid {
     grid-template-columns: 1fr;
   }
 

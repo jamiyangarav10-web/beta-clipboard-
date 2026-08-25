@@ -84,6 +84,11 @@ const COPY = {
     heroText: "LocalBridge keeps your clipboard in sync across your devices without IP addresses, ports, Tailscale setup, secrets, or terminal commands.",
     connectCta: "Connect my devices",
     downloadCta: "Download LocalBridge",
+    simpleInstall: "Simple terminal install",
+    simpleInstallText: "Paste one command in Terminal or PowerShell. This developer beta is unsigned, but it avoids manual ZIP setup.",
+    copyCommand: "Copy command",
+    macCommandCopied: "Mac install command copied.",
+    windowsCommandCopied: "Windows install command copied.",
     installStart: "Install and start LocalBridge on each computer.",
     chooseDevice: "Choose this computer, then create or join a pairing code.",
     startAgent: "Start the LocalBridge app on each computer.",
@@ -187,6 +192,11 @@ const COPY = {
     heroText: "LocalBridge нь IP, port, Tailscale, secret, terminal command тохируулахгүйгээр таны төхөөрөмжүүдийн clipboard-ийг sync хийнэ.",
     connectCta: "Төхөөрөмж холбох",
     downloadCta: "LocalBridge татах",
+    simpleInstall: "Terminal-аар энгийн суулгах",
+    simpleInstallText: "Terminal эсвэл PowerShell дээр нэг command paste хийнэ. Энэ developer beta unsigned хэвээр ч ZIP гараар задлах шаардлагагүй.",
+    copyCommand: "Command хуулах",
+    macCommandCopied: "Mac install command хуулагдлаа.",
+    windowsCommandCopied: "Windows install command хуулагдлаа.",
     installStart: "Төхөөрөмж бүр дээр LocalBridge суулгаж асаана уу.",
     chooseDevice: "Энэ компьютерыг сонгоод pairing code үүсгэх эсвэл оруулна уу.",
     startAgent: "Төхөөрөмж бүр дээр LocalBridge app-аа асаана уу.",
@@ -502,6 +512,14 @@ function App() {
     setMessage(t.copied);
   };
 
+  const copyInstallCommand = async (platform: "mac" | "windows") => {
+    const command = platform === "mac"
+      ? "curl -fsSL https://clipboardbeta.netlify.app/install/mac.sh | bash"
+      : "powershell -NoProfile -ExecutionPolicy Bypass -Command \"iwr https://clipboardbeta.netlify.app/install/windows.ps1 -UseB | iex\"";
+    await navigator.clipboard.writeText(command);
+    setMessage(platform === "mac" ? t.macCommandCopied : t.windowsCommandCopied);
+  };
+
   const reconnect = async () => {
     try {
       await callAgent("/api/reconnect");
@@ -637,6 +655,28 @@ function App() {
           <span className="kicker">{t.navDownloads}</span>
           <h2>{t.chooseDeviceTitle}</h2>
           <p>{t.downloadsText}</p>
+        </div>
+        <div className="install-commands">
+          <div>
+            <span className="kicker">{t.simpleInstall}</span>
+            <p>{t.simpleInstallText}</p>
+          </div>
+          <div className="command-grid">
+            <CommandBox
+              platform="macos"
+              title="macOS"
+              command="curl -fsSL https://clipboardbeta.netlify.app/install/mac.sh | bash"
+              copyLabel={t.copyCommand}
+              onCopy={() => copyInstallCommand("mac")}
+            />
+            <CommandBox
+              platform="windows"
+              title="Windows"
+              command={'powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://clipboardbeta.netlify.app/install/windows.ps1 -UseB | iex"'}
+              copyLabel={t.copyCommand}
+              onCopy={() => copyInstallCommand("windows")}
+            />
+          </div>
         </div>
         <div className="download-grid">
           <a className="download-card" href="/downloads/LocalBridge-Windows.zip">
@@ -1041,6 +1081,33 @@ function Step({ icon, title, body }: { icon: React.ReactNode; title: string; bod
       {icon}
       <h3>{title}</h3>
       <p>{body}</p>
+    </article>
+  );
+}
+
+function CommandBox({
+  platform,
+  title,
+  command,
+  copyLabel,
+  onCopy,
+}: {
+  platform: string;
+  title: string;
+  command: string;
+  copyLabel: string;
+  onCopy: () => void;
+}) {
+  return (
+    <article className="command-card">
+      <div>
+        <PlatformIcon platform={platform} size={24} />
+        <strong>{title}</strong>
+      </div>
+      <code>{command}</code>
+      <button type="button" onClick={onCopy}>
+        <Copy size={16} /> {copyLabel}
+      </button>
     </article>
   );
 }
