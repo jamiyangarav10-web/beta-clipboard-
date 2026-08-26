@@ -66,7 +66,14 @@ def peer_device_id():
 def clipboard_get():
     if IS_WINDOWS:
         import pyperclip
-        return pyperclip.paste()
+        last_error = None
+        for attempt in range(6):
+            try:
+                return pyperclip.paste()
+            except Exception as error:
+                last_error = error
+                time.sleep(0.05 * (attempt + 1))
+        raise last_error
     proc = subprocess.run(["pbpaste"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
     return proc.stdout.decode("utf-8", "ignore")
 
@@ -74,10 +81,43 @@ def clipboard_get():
 def clipboard_set(text):
     if IS_WINDOWS:
         import pyperclip
-        pyperclip.copy(text)
-        return
-    proc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    proc.communicate(str(text).encode("utf-8", "ignore"))
+        last_error = None
+        for attempt in range(6):
+            try:
+                pyperclip.copy(text)
+                return
+            except Exception as error:
+                last_error = error
+                time.sleep(0.05 * (attempt + 1))
+        raise last_error
+
+    value = str(text)
+    payload = value.encode("utf-8", "ignore")
+    for attempt in range(3):
+        proc = subprocess.run(["pbcopy"], input=payload, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False)
+        if proc.returncode == 0:
+            time.sleep(0.05)
+            if clipboard_get() == value:
+                return
+
+        fallback = subprocess.run(
+            [
+                "osascript",
+                "-e", "on run argv",
+                "-e", "set the clipboard to item 1 of argv",
+                "-e", "end run",
+                value,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if fallback.returncode == 0:
+            time.sleep(0.05)
+            if clipboard_get() == value:
+                return
+        time.sleep(0.1 * (attempt + 1))
+    raise RuntimeError("macOS clipboard write could not be verified")
 
 
 def safe_filename(name):
