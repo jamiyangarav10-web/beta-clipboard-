@@ -36,7 +36,8 @@ button,
 }
 
 select,
-input {
+input,
+textarea {
   border: 1px solid #dde2d9;
   border-radius: 6px;
   color: #17201b;
@@ -44,6 +45,11 @@ input {
   min-height: 38px;
   padding: 0.45rem 0.55rem;
   width: 100%;
+}
+
+textarea {
+  min-height: 150px;
+  resize: vertical;
 }
 
 .topbar {
@@ -534,6 +540,55 @@ p {
   font-size: 0.95rem;
 }
 
+.web-fallback {
+  border-top: 1px solid #dde2d9;
+  margin-top: 2.5rem;
+  padding-top: 2.5rem;
+}
+
+.web-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 1.5rem;
+}
+
+.web-tool {
+  background: #fff;
+  border: 1px solid #dbe3dd;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.web-tool .connection-map {
+  margin: 0;
+}
+
+.web-inbox article {
+  border-top: 1px solid #dde2d9;
+  display: grid;
+  gap: 0.6rem;
+  padding-top: 0.75rem;
+}
+
+.web-inbox p {
+  background: #f2f5f7;
+  border-radius: 6px;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0.75rem;
+}
+
+.web-inbox button {
+  background: #17201b;
+  color: #fff;
+  justify-self: start;
+  min-height: 38px;
+  padding: 0.55rem 0.8rem;
+}
+
 .dashboard-shell {
   margin: 0 auto;
   max-width: 860px;
@@ -658,7 +713,8 @@ summary {
   .steps,
   .security-grid,
   .download-grid,
-  .command-grid {
+  .command-grid,
+  .web-grid {
     grid-template-columns: 1fr;
   }
 

@@ -71,6 +71,27 @@ type PairingSession = {
   expiresAt?: number;
 };
 
+type WebIdentity = {
+  deviceId: string;
+  controlToken: string;
+  deviceName: string;
+  platform: "windows" | "macos";
+};
+
+type RelayItem = {
+  id: string;
+  fromDeviceId: string;
+  message: {
+    type: "clipboard" | "file";
+    text?: string;
+    name?: string;
+    mime?: string;
+    data?: string;
+    size?: number;
+  };
+  createdAt: number;
+};
+
 const COPY = {
   en: {
     navConnect: "Connector",
@@ -84,6 +105,21 @@ const COPY = {
     heroText: "LocalBridge keeps your clipboard in sync across your devices without IP addresses, ports, Tailscale setup, secrets, or terminal commands.",
     connectCta: "Connect my devices",
     downloadCta: "Download LocalBridge",
+    webMode: "No-install web mode",
+    webModeText: "Use this when antivirus blocks the beta agent. It works in the browser for manual text and file transfer.",
+    webCreateRoom: "Create web room",
+    webJoinRoom: "Join web room",
+    webFinishRoom: "Finish web pairing",
+    webSendText: "Send text",
+    webCopyText: "Copy text",
+    webIncoming: "Incoming",
+    webTextPlaceholder: "Paste text here to send to the other device.",
+    webRoomCreated: "Web room created. Enter this code on the other device.",
+    webRoomJoined: "Joined. Finish pairing on the device that created the code.",
+    webRoomReady: "Web devices connected. You can send text and files in the browser.",
+    webTextSent: "Text sent.",
+    webFileSent: "File sent.",
+    webNoPeer: "Connect a web room first.",
     simpleInstall: "Simple terminal install",
     simpleInstallText: "Paste one command in Terminal or PowerShell. This developer beta is unsigned, but it avoids manual ZIP setup.",
     copyCommand: "Copy command",
@@ -192,6 +228,21 @@ const COPY = {
     heroText: "LocalBridge нь IP, port, Tailscale, secret, terminal command тохируулахгүйгээр таны төхөөрөмжүүдийн clipboard-ийг sync хийнэ.",
     connectCta: "Төхөөрөмж холбох",
     downloadCta: "LocalBridge татах",
+    webMode: "Суулгахгүй web mode",
+    webModeText: "Antivirus beta agent-ийг хаавал үүнийг ашигла. Browser дотор text болон файл гараар дамжуулна.",
+    webCreateRoom: "Web room үүсгэх",
+    webJoinRoom: "Web room-д орох",
+    webFinishRoom: "Web pairing дуусгах",
+    webSendText: "Text явуулах",
+    webCopyText: "Text хуулах",
+    webIncoming: "Ирсэн зүйлс",
+    webTextPlaceholder: "Нөгөө төхөөрөмж рүү явуулах text-ээ энд paste хийнэ.",
+    webRoomCreated: "Web room үүслээ. Энэ code-г нөгөө төхөөрөмж дээр оруул.",
+    webRoomJoined: "Нэгдлээ. Code үүсгэсэн төхөөрөмж дээр pairing-г дуусга.",
+    webRoomReady: "Web төхөөрөмжүүд холбогдлоо. Browser-аар text/file явуулж болно.",
+    webTextSent: "Text явууллаа.",
+    webFileSent: "Файл явууллаа.",
+    webNoPeer: "Эхлээд web room холбоно уу.",
     simpleInstall: "Terminal-аар энгийн суулгах",
     simpleInstallText: "Terminal эсвэл PowerShell дээр нэг command paste хийнэ. Энэ developer beta unsigned хэвээр ч ZIP гараар задлах шаардлагагүй.",
     copyCommand: "Command хуулах",
@@ -292,6 +343,13 @@ const COPY = {
 
 function App() {
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem("localbridge-language") as Language) || "en");
+  const [webIdentity] = useState<WebIdentity>(() => loadWebIdentity());
+  const [webPairingId, setWebPairingId] = useState("");
+  const [webJoinPairingId, setWebJoinPairingId] = useState("");
+  const [webSession, setWebSession] = useState<PairingSession | null>(null);
+  const [webText, setWebText] = useState("");
+  const [webInbox, setWebInbox] = useState<RelayItem[]>([]);
+  const [webBusy, setWebBusy] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [pairingId, setPairingId] = useState("");
@@ -324,6 +382,8 @@ function App() {
   const effectiveState: PairingState = syncActive ? "CONNECTED" : localPaired ? "PAIRED" : state;
   const connectionReady = Boolean(pairedDevice && (localPaired || syncActive || session?.used));
   const peerName = pairedDevice?.deviceName || (connectionReady ? t.pairedDevice : t.waitingPeer);
+  const webPaired = Boolean(webSession?.used);
+  const webPeer = webIdentity.deviceId === webSession?.requesterDeviceId ? webSession?.responderDevice : webSession?.requesterDevice;
 
   useEffect(() => {
     localStorage.setItem("localbridge-language", language);
@@ -415,6 +475,49 @@ function App() {
       window.clearInterval(interval);
     };
   }, [pairingId]);
+
+  useEffect(() => {
+    if (!webPairingId) return;
+    let mounted = true;
+    const refreshWebSession = async () => {
+      try {
+        const data = await backendJson<PairingSession>(`/session/${encodeURIComponent(webPairingId)}`);
+        if (mounted) setWebSession(data);
+      } catch {
+        // Short-lived beta rooms may expire while a user is testing.
+      }
+    };
+    refreshWebSession();
+    const interval = window.setInterval(refreshWebSession, 2000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, [webPairingId]);
+
+  useEffect(() => {
+    if (!webPaired) return;
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const data = await backendJson<{ messages: RelayItem[] }>("/relay/poll", {
+          deviceId: webIdentity.deviceId,
+          controlToken: webIdentity.controlToken,
+        });
+        if (mounted && data.messages.length) {
+          setWebInbox((current) => [...data.messages, ...current].slice(0, 20));
+        }
+      } catch {
+        // Keep the web fallback quiet if the temporary relay is unavailable.
+      }
+    };
+    poll();
+    const interval = window.setInterval(poll, 2500);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, [webIdentity, webPaired]);
 
   const callAgent = async <T,>(path: string, body?: unknown) => {
     setBusy(true);
@@ -565,6 +668,112 @@ function App() {
     }
   };
 
+  const registerWebDevice = async () => {
+    await backendJson("/register", {
+      deviceId: webIdentity.deviceId,
+      deviceName: webIdentity.deviceName,
+      platform: webIdentity.platform,
+      directEndpoint: "",
+      controlToken: webIdentity.controlToken,
+    });
+  };
+
+  const createWebRoom = async () => {
+    setWebBusy(true);
+    try {
+      await registerWebDevice();
+      const data = await backendJson<{ pairingId: string; state: PairingState }>("/session", { deviceId: webIdentity.deviceId });
+      setWebPairingId(data.pairingId);
+      setWebJoinPairingId(data.pairingId);
+      setWebSession({ pairingId: data.pairingId, state: data.state, requesterDeviceId: webIdentity.deviceId });
+      setMessage(t.webRoomCreated);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t.codeCreateError);
+    } finally {
+      setWebBusy(false);
+    }
+  };
+
+  const joinWebRoom = async () => {
+    if (!webJoinPairingId) {
+      setMessage(t.enterCode);
+      return;
+    }
+    setWebBusy(true);
+    try {
+      await registerWebDevice();
+      const data = await backendJson<{ pairingId: string; state: PairingState; requesterDeviceId: string }>("/join", {
+        pairingId: webJoinPairingId,
+        deviceId: webIdentity.deviceId,
+      });
+      setWebPairingId(data.pairingId);
+      setWebSession({ pairingId: data.pairingId, state: data.state, requesterDeviceId: data.requesterDeviceId, responderDeviceId: webIdentity.deviceId });
+      setMessage(t.webRoomJoined);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t.joinError);
+    } finally {
+      setWebBusy(false);
+    }
+  };
+
+  const finishWebRoom = async () => {
+    const code = webPairingId || webJoinPairingId;
+    if (!code) {
+      setMessage(t.createOrEnter);
+      return;
+    }
+    setWebBusy(true);
+    try {
+      const data = await backendJson<{ pairingId: string; state: PairingState }>("/approve", { pairingId: code });
+      setWebPairingId(data.pairingId);
+      const fresh = await backendJson<PairingSession>(`/session/${encodeURIComponent(data.pairingId)}`);
+      setWebSession(fresh);
+      setMessage(t.webRoomReady);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t.finishError);
+    } finally {
+      setWebBusy(false);
+    }
+  };
+
+  const sendWebRelay = async (messageBody: RelayItem["message"]) => {
+    if (!webPaired || !webPeer?.deviceId) {
+      setMessage(t.webNoPeer);
+      return;
+    }
+    setWebBusy(true);
+    try {
+      await backendJson("/relay/send", {
+        deviceId: webIdentity.deviceId,
+        controlToken: webIdentity.controlToken,
+        toDeviceId: webPeer.deviceId,
+        message: messageBody,
+      });
+      setMessage(messageBody.type === "file" ? t.webFileSent : t.webTextSent);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t.fileSendError);
+    } finally {
+      setWebBusy(false);
+    }
+  };
+
+  const sendWebText = async () => {
+    const text = webText.trim();
+    if (!text) return;
+    await sendWebRelay({ type: "clipboard", text });
+    setWebText("");
+  };
+
+  const sendWebFile = async (file: File | null) => {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      setMessage(t.fileTooLarge);
+      return;
+    }
+    const data = await fileToBase64(file);
+    await sendWebRelay({ type: "file", name: file.name, mime: file.type || "application/octet-stream", data, size: file.size });
+  };
+
   return (
     <main>
       <header className="topbar">
@@ -648,6 +857,24 @@ function App() {
           <Step icon={<Link2 />} title={t.stepPair} body={t.stepPairBody} />
           <Step icon={<Clipboard />} title={t.stepCopy} body={t.stepCopyBody} />
         </div>
+        <WebFallbackPanel
+          t={t}
+          identity={webIdentity}
+          pairingId={webPairingId}
+          joinPairingId={webJoinPairingId}
+          setJoinPairingId={setWebJoinPairingId}
+          session={webSession}
+          peer={webPeer || null}
+          text={webText}
+          setText={setWebText}
+          inbox={webInbox}
+          busy={webBusy}
+          createRoom={createWebRoom}
+          joinRoom={joinWebRoom}
+          finishRoom={finishWebRoom}
+          sendText={sendWebText}
+          sendFile={sendWebFile}
+        />
       </section>
 
       <section id="downloads" className="downloads">
@@ -935,6 +1162,146 @@ function ConnectorPanel({
   );
 }
 
+function WebFallbackPanel({
+  t,
+  identity,
+  pairingId,
+  joinPairingId,
+  setJoinPairingId,
+  session,
+  peer,
+  text,
+  setText,
+  inbox,
+  busy,
+  createRoom,
+  joinRoom,
+  finishRoom,
+  sendText,
+  sendFile,
+}: {
+  t: (typeof COPY)[Language];
+  identity: WebIdentity;
+  pairingId: string;
+  joinPairingId: string;
+  setJoinPairingId: (value: string) => void;
+  session: PairingSession | null;
+  peer: Device | null;
+  text: string;
+  setText: (value: string) => void;
+  inbox: RelayItem[];
+  busy: boolean;
+  createRoom: () => Promise<void>;
+  joinRoom: () => Promise<void>;
+  finishRoom: () => Promise<void>;
+  sendText: () => Promise<void>;
+  sendFile: (file: File | null) => Promise<void>;
+}) {
+  const connected = Boolean(session?.used && peer);
+  return (
+    <div className="web-fallback">
+      <div className="section-heading">
+        <span className="kicker">{t.webMode}</span>
+        <h2>{t.webMode}</h2>
+        <p>{t.webModeText}</p>
+      </div>
+      <div className="web-grid">
+        <section className="web-tool">
+          <div className="connection-map">
+            <div>
+              <PlatformIcon platform={identity.platform} size={24} />
+              <span>{identity.deviceName}</span>
+            </div>
+            <ArrowRight size={18} />
+            <div>
+              <PlatformIcon platform={peer?.platform} size={24} />
+              <span>{peer?.deviceName || t.waitingPeer}</span>
+            </div>
+          </div>
+          <label>
+            {t.pairingCode}
+            <input
+              value={joinPairingId}
+              onChange={(event) => setJoinPairingId(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="123456"
+            />
+          </label>
+          <div className="demo-actions">
+            <button type="button" onClick={createRoom} disabled={busy}>
+              <Link2 size={16} /> {t.webCreateRoom}
+            </button>
+            <button type="button" onClick={joinRoom} disabled={busy}>
+              <Clipboard size={16} /> {t.webJoinRoom}
+            </button>
+            <button type="button" onClick={finishRoom} disabled={busy || !(pairingId || joinPairingId)}>
+              <CheckCircle2 size={16} /> {t.webFinishRoom}
+            </button>
+            <button type="button" onClick={() => navigator.clipboard.writeText(pairingId)} disabled={!pairingId}>
+              <Copy size={16} /> {t.copyCode}
+            </button>
+          </div>
+          <div className="session-summary">
+            <strong>{pairingId ? `Code ${pairingId}` : t.noCode}</strong>
+            <span>{connected ? t.webRoomReady : t.noCodeSummary}</span>
+          </div>
+        </section>
+        <section className="web-tool">
+          <textarea
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={t.webTextPlaceholder}
+            disabled={!connected || busy}
+          />
+          <div className="demo-actions">
+            <button type="button" onClick={sendText} disabled={!connected || busy || !text.trim()}>
+              <Clipboard size={16} /> {t.webSendText}
+            </button>
+          </div>
+          <label className="file-send">
+            <span>{t.sendFile}</span>
+            <input
+              type="file"
+              disabled={!connected || busy}
+              onChange={(event) => {
+                void sendFile(event.currentTarget.files?.[0] || null);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+        </section>
+        <section className="web-tool web-inbox">
+          <strong>{t.webIncoming}</strong>
+          {inbox.length ? inbox.map((item) => (
+            <article key={item.id}>
+              {item.message.type === "file" ? (
+                <>
+                  <span>{item.message.name}</span>
+                  <a
+                    className="button secondary"
+                    href={`data:${item.message.mime || "application/octet-stream"};base64,${item.message.data}`}
+                    download={item.message.name || "localbridge-file"}
+                  >
+                    <Download size={16} /> {t.downloadCta}
+                  </a>
+                </>
+              ) : (
+                <>
+                  <p>{item.message.text}</p>
+                  <button type="button" onClick={() => navigator.clipboard.writeText(item.message.text || "")}>
+                    <Copy size={16} /> {t.webCopyText}
+                  </button>
+                </>
+              )}
+            </article>
+          )) : <p>{t.waiting}</p>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function statusIndex(state: PairingState | undefined) {
   switch (state) {
     case "PAIRING":
@@ -1034,6 +1401,42 @@ async function fetchLocalAgentStatus() {
     }
   }
   throw lastError instanceof Error ? lastError : new Error("LocalBridge agent not found");
+}
+
+async function backendJson<T = unknown>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`/.netlify/functions/pairing${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data as T;
+}
+
+function loadWebIdentity(): WebIdentity {
+  const key = "localbridge-web-identity";
+  try {
+    const existing = JSON.parse(localStorage.getItem(key) || "null") as WebIdentity | null;
+    if (existing?.deviceId && existing?.controlToken) return existing;
+  } catch {
+    // Create a fresh browser identity below.
+  }
+  const platform = detectWebPlatform();
+  const identity: WebIdentity = {
+    deviceId: `web_${crypto.randomUUID().replace(/-/g, "")}`,
+    controlToken: crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, ""),
+    deviceName: `${platform === "windows" ? "Windows" : "Mac"} browser`,
+    platform,
+  };
+  localStorage.setItem(key, JSON.stringify(identity));
+  return identity;
+}
+
+function detectWebPlatform(): "windows" | "macos" {
+  const value = `${navigator.platform || ""} ${navigator.userAgent || ""}`.toLowerCase();
+  return value.includes("win") ? "windows" : "macos";
 }
 
 function fileToBase64(file: File) {
