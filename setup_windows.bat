@@ -3,8 +3,6 @@ setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
 set "APP_DIR=%LOCALAPPDATA%\LocalBridge"
-set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-set "RUNNER=%APP_DIR%\start-localbridge.vbs"
 set "BAT_RUNNER=%APP_DIR%\run-localbridge-agent.bat"
 set "DIAG=%APP_DIR%\diagnose-localbridge.bat"
 set "PYTHON_INSTALLER=%TEMP%\localbridge-python-3.12.10-amd64.exe"
@@ -65,14 +63,8 @@ copy /Y requirements.txt "%APP_DIR%\requirements.txt" >nul
 (
   echo @echo off
   echo cd /d "%%~dp0"
-  echo %PY_CMD% agent.py ^>^> agent.log 2^>^&1
+  echo %PY_CMD% agent.py
 ) > "%BAT_RUNNER%"
-
-(
-  echo Set shell = CreateObject^("WScript.Shell"^)
-  echo shell.CurrentDirectory = "%APP_DIR%"
-  echo shell.Run "cmd.exe /c ""%BAT_RUNNER%""", 0, False
-) > "%RUNNER%" 2>nul
 
 (
   echo @echo off
@@ -84,18 +76,8 @@ copy /Y requirements.txt "%APP_DIR%\requirements.txt" >nul
   echo pause
 ) > "%DIAG%"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '%PY_CMD%' -ArgumentList 'agent.py' -WorkingDirectory '%APP_DIR%' -WindowStyle Hidden; exit 0 } catch { exit 1 }"
-if %ERRORLEVEL% NEQ 0 (
-  echo Hidden start was blocked. Trying visible minimized fallback...
-  start "LocalBridge" /MIN %PY_CMD% "%APP_DIR%\agent.py"
-)
-
-if exist "%RUNNER%" (
-  copy /Y "%RUNNER%" "%STARTUP%\LocalBridge.vbs" >nul 2>nul
-  if %ERRORLEVEL% NEQ 0 (
-    echo Startup registration was skipped. LocalBridge is still starting for this session.
-  )
-)
+echo Starting LocalBridge in a visible terminal window...
+start "LocalBridge Agent" cmd /k ""%BAT_RUNNER%""
 
 set "AGENT_READY=0"
 for /L %%I in (1,1,15) do (
