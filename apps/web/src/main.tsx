@@ -857,24 +857,6 @@ function App() {
           <Step icon={<Link2 />} title={t.stepPair} body={t.stepPairBody} />
           <Step icon={<Clipboard />} title={t.stepCopy} body={t.stepCopyBody} />
         </div>
-        <WebFallbackPanel
-          t={t}
-          identity={webIdentity}
-          pairingId={webPairingId}
-          joinPairingId={webJoinPairingId}
-          setJoinPairingId={setWebJoinPairingId}
-          session={webSession}
-          peer={webPeer || null}
-          text={webText}
-          setText={setWebText}
-          inbox={webInbox}
-          busy={webBusy}
-          createRoom={createWebRoom}
-          joinRoom={joinWebRoom}
-          finishRoom={finishWebRoom}
-          sendText={sendWebText}
-          sendFile={sendWebFile}
-        />
       </section>
 
       <section id="downloads" className="downloads">
