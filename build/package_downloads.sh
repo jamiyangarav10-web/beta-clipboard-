@@ -10,7 +10,7 @@ mkdir -p "$WORK_DIR/mac/LocalBridge-Mac/mac"
 mkdir -p "$WORK_DIR/windows/LocalBridge-Windows/windows"
 mkdir -p "$WORK_DIR/windows/LocalBridge-Windows/packages/shared"
 mkdir -p "$PUBLIC_DOWNLOADS"
-rm -f "$PUBLIC_DOWNLOADS/LocalBridge-Mac.zip" "$PUBLIC_DOWNLOADS/LocalBridge-Windows.zip"
+rm -f "$PUBLIC_DOWNLOADS/LocalBridge-Mac.zip" "$PUBLIC_DOWNLOADS/LocalBridge-Windows.zip" "$PUBLIC_DOWNLOADS/LocalBridge-Windows-python.zip"
 
 cp "$ROOT/setup_mac.command" "$WORK_DIR/mac/LocalBridge-Mac/setup_mac.command"
 cp "$ROOT/requirements.txt" "$WORK_DIR/mac/LocalBridge-Mac/requirements.txt"
@@ -53,7 +53,9 @@ EOF
   cd "$WORK_DIR/windows"
   zip -qr "$PUBLIC_DOWNLOADS/LocalBridge-Windows.zip" LocalBridge-Windows
 )
+cp "$PUBLIC_DOWNLOADS/LocalBridge-Windows.zip" "$PUBLIC_DOWNLOADS/LocalBridge-Windows-python.zip"
 
 echo "Wrote:"
 echo "  $PUBLIC_DOWNLOADS/LocalBridge-Mac.zip"
 echo "  $PUBLIC_DOWNLOADS/LocalBridge-Windows.zip"
+echo "  $PUBLIC_DOWNLOADS/LocalBridge-Windows-python.zip (compatibility alias)"
