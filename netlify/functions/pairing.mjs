@@ -33,6 +33,9 @@ export const handler = async (event) => {
     if (method === "OPTIONS") {
       return json(204, {});
     }
+    if (method === "GET" && path === "/health") {
+      return json(200, { ok: true, version: "pairing-v3-strong" });
+    }
     if (method === "GET" && path === "/devices") {
       const result = await service.listDevices();
       return json(result.status, result.body);

@@ -26,7 +26,7 @@ export async function createNetlifyBlobStore(name = "localbridge-pairing") {
   const blobs = getStore({ name, consistency: "strong" });
   return {
     async get(key) {
-      return await blobs.get(key, { type: "json" });
+      return await blobs.get(key, { type: "json", consistency: "strong" });
     },
     async set(key, value) {
       await blobs.setJSON(key, value);
