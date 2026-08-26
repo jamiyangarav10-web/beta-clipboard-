@@ -72,7 +72,7 @@ copy /Y requirements.txt "%APP_DIR%\requirements.txt" >nul
   echo Set shell = CreateObject^("WScript.Shell"^)
   echo shell.CurrentDirectory = "%APP_DIR%"
   echo shell.Run "cmd.exe /c ""%BAT_RUNNER%""", 0, False
-) > "%RUNNER%"
+) > "%RUNNER%" 2>nul
 
 (
   echo @echo off
@@ -84,8 +84,18 @@ copy /Y requirements.txt "%APP_DIR%\requirements.txt" >nul
   echo pause
 ) > "%DIAG%"
 
-copy /Y "%RUNNER%" "%STARTUP%\LocalBridge.vbs" >nul
-wscript "%RUNNER%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '%PY_CMD%' -ArgumentList 'agent.py' -WorkingDirectory '%APP_DIR%' -WindowStyle Hidden; exit 0 } catch { exit 1 }"
+if %ERRORLEVEL% NEQ 0 (
+  echo Hidden start was blocked. Trying visible minimized fallback...
+  start "LocalBridge" /MIN %PY_CMD% "%APP_DIR%\agent.py"
+)
+
+if exist "%RUNNER%" (
+  copy /Y "%RUNNER%" "%STARTUP%\LocalBridge.vbs" >nul 2>nul
+  if %ERRORLEVEL% NEQ 0 (
+    echo Startup registration was skipped. LocalBridge is still starting for this session.
+  )
+)
 
 set "AGENT_READY=0"
 for /L %%I in (1,1,15) do (
