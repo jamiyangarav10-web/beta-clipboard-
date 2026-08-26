@@ -690,7 +690,7 @@ function App() {
   const copyInstallCommand = async (platform: "mac" | "windows") => {
     const command = platform === "mac"
       ? "curl -fsSL https://ai-mongolia.netlify.app/install/mac.sh | bash"
-      : "powershell -NoProfile -ExecutionPolicy Bypass -Command \"iwr https://ai-mongolia.netlify.app/install/windows.ps1 -UseB | iex\"";
+      : "powershell -NoProfile -ExecutionPolicy Bypass -Command \"iwr https://ai-mongolia.netlify.app/install/windows.ps1 -UseBasicParsing | iex\"";
     await navigator.clipboard.writeText(command);
     setMessage(platform === "mac" ? t.macCommandCopied : t.windowsCommandCopied);
   };
@@ -963,7 +963,7 @@ function App() {
             <CommandBox
               platform="windows"
               title="Windows"
-              command={'powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://ai-mongolia.netlify.app/install/windows.ps1 -UseB | iex"'}
+              command={'powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://ai-mongolia.netlify.app/install/windows.ps1 -UseBasicParsing | iex"'}
               copyLabel={t.copyCommand}
               onCopy={() => copyInstallCommand("windows")}
             />
