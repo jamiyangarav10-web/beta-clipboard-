@@ -9,6 +9,13 @@ set "PYTHON_INSTALLER=%TEMP%\localbridge-python-3.12.10-amd64.exe"
 set "PY_CMD="
 set "PY_EXE="
 set "PY_BG_EXE="
+set "USE_BUNDLED_PYTHON=0"
+
+if exist "%~dp0runtime\python.exe" (
+  set "USE_BUNDLED_PYTHON=1"
+  set "PY_CMD=%~dp0runtime\python.exe"
+  goto python_found
+)
 
 where python >nul 2>nul
 if %ERRORLEVEL% EQU 0 set "PY_CMD=python"
@@ -50,6 +57,7 @@ if "%PY_CMD%"=="" (
   exit /b 1
 )
 
+:python_found
 if not exist "%APP_DIR%" mkdir "%APP_DIR%"
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*LocalBridge*agent.py*' -or $_.CommandLine -like '*LocalBridge*windows*server.py*' } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force } catch {} }" >nul 2>nul
@@ -60,22 +68,29 @@ copy /Y agent.py "%APP_DIR%\agent.py" >nul
 copy /Y cloud_relay.py "%APP_DIR%\cloud_relay.py" >nul
 copy /Y requirements.txt "%APP_DIR%\requirements.txt" >nul
 
-%PY_CMD% -m pip install --user -r "%APP_DIR%\requirements.txt"
-if !ERRORLEVEL! NEQ 0 (
-  echo LocalBridge dependencies could not be installed.
-  if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
-  exit /b 1
-)
+if "!USE_BUNDLED_PYTHON!"=="1" (
+  echo Installing bundled LocalBridge runtime...
+  xcopy /E /I /Y runtime "%APP_DIR%\runtime" >nul
+  set "PY_EXE=%APP_DIR%\runtime\python.exe"
+  set "PY_BG_EXE=%APP_DIR%\runtime\pythonw.exe"
+) else (
+  %PY_CMD% -m pip install --user -r "%APP_DIR%\requirements.txt"
+  if !ERRORLEVEL! NEQ 0 (
+    echo LocalBridge dependencies could not be installed.
+    if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
+    exit /b 1
+  )
 
-for /f "usebackq delims=" %%P in (`%PY_CMD% -c "import sys; print(sys.executable)"`) do set "PY_EXE=%%P"
-if not exist "!PY_EXE!" (
-  echo LocalBridge could not resolve the Python executable.
-  if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
-  exit /b 1
-)
+  for /f "usebackq delims=" %%P in (`%PY_CMD% -c "import sys; print(sys.executable)"`) do set "PY_EXE=%%P"
+  if not exist "!PY_EXE!" (
+    echo LocalBridge could not resolve the Python executable.
+    if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
+    exit /b 1
+  )
 
-set "PY_BG_EXE=!PY_EXE!"
-for %%P in ("!PY_EXE!") do if exist "%%~dpPpythonw.exe" set "PY_BG_EXE=%%~dpPpythonw.exe"
+  set "PY_BG_EXE=!PY_EXE!"
+  for %%P in ("!PY_EXE!") do if exist "%%~dpPpythonw.exe" set "PY_BG_EXE=%%~dpPpythonw.exe"
+)
 
 (
   echo @echo off

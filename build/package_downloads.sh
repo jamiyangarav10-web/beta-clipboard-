@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PUBLIC_DOWNLOADS="$ROOT/apps/web/public/downloads"
 WORK_DIR="${TMPDIR:-/tmp}/localbridge-downloads"
+PYTHON_EMBED_VERSION="3.12.10"
+PYTHON_EMBED_URL="https://www.python.org/ftp/python/${PYTHON_EMBED_VERSION}/python-${PYTHON_EMBED_VERSION}-embed-amd64.zip"
 
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR/mac/LocalBridge-Mac/mac"
@@ -35,14 +37,33 @@ cp "$ROOT/clients/native/cloud_relay.py" "$WORK_DIR/windows/LocalBridge-Windows/
 cp "$ROOT/windows/server.py" "$WORK_DIR/windows/LocalBridge-Windows/windows/server.py"
 cp -R "$ROOT/packages/shared/localbridge" "$WORK_DIR/windows/LocalBridge-Windows/packages/shared/localbridge"
 find "$WORK_DIR/windows/LocalBridge-Windows/packages" -name "__pycache__" -type d -prune -exec rm -rf {} +
+
+WINDOWS_RUNTIME="$WORK_DIR/windows/LocalBridge-Windows/runtime"
+mkdir -p "$WINDOWS_RUNTIME/Lib/site-packages"
+curl -fsSL "$PYTHON_EMBED_URL" -o "$WORK_DIR/python-embed.zip"
+unzip -q "$WORK_DIR/python-embed.zip" -d "$WINDOWS_RUNTIME"
+python3 -m pip install \
+  --disable-pip-version-check \
+  --no-compile \
+  --no-deps \
+  --only-binary=:all: \
+  --platform win_amd64 \
+  --implementation cp \
+  --python-version 3.12 \
+  --abi cp312 \
+  --target "$WINDOWS_RUNTIME/Lib/site-packages" \
+  "websockets==15.0.1" \
+  "pyperclip==1.11.0"
+printf '\nLib\\site-packages\nimport site\n' >> "$WINDOWS_RUNTIME/python312._pth"
 cat > "$WORK_DIR/windows/LocalBridge-Windows/README.txt" <<'EOF'
 LocalBridge for Windows
 
 1. Run setup_windows.bat.
 2. Open https://ai-mongolia.netlify.app/#connect and pair this device.
 
-The installer runs LocalBridge in the background at http://127.0.0.1:17833 and
-registers it to start automatically when you sign in to Windows.
+Python is included. You do not need to install Python or change App Execution
+Aliases. The installer runs LocalBridge in the background at
+http://127.0.0.1:17833 and registers it to start automatically when you sign in.
 EOF
 
 (
