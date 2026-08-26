@@ -23,7 +23,7 @@ export function createMemoryStore() {
 
 export async function createNetlifyBlobStore(name = "localbridge-pairing") {
   const { getStore } = await import("@netlify/blobs");
-  const blobs = getStore(name);
+  const blobs = getStore({ name, consistency: "strong" });
   return {
     async get(key) {
       return await blobs.get(key, { type: "json" });
