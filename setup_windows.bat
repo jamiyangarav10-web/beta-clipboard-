@@ -107,5 +107,5 @@ if not "%AGENT_READY%"=="1" (
 )
 
 echo LocalBridge is installed and running.
-echo Open https://majestic-taiyaki-c806ec.netlify.app/#connect to pair this device.
+echo Open https://ai-mongolia.netlify.app/#connect to pair this device.
 if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause

@@ -45,7 +45,7 @@ launchctl bootstrap "gui/$(id -u)" "$PLIST"
 launchctl kickstart -k "gui/$(id -u)/com.localbridge.client"
 
 echo "LocalBridge is installed and running."
-echo "Open https://majestic-taiyaki-c806ec.netlify.app/#connect to pair this device."
+echo "Open https://ai-mongolia.netlify.app/#connect to pair this device."
 if [ "${LOCALBRIDGE_NONINTERACTIVE:-0}" != "1" ]; then
   read -p "Press Enter to close..."
 fi
