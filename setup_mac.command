@@ -44,6 +44,16 @@ launchctl bootout "gui/$(id -u)" "$PLIST" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 launchctl kickstart -k "gui/$(id -u)/com.localbridge.client"
 
+for _ in {1..15}; do
+  [ -f "$APP_DIR/identity.json" ] && break
+  sleep 1
+done
+
+if [ -f "$APP_DIR/identity.json" ]; then
+  CLAIM_URL=$(/usr/bin/python3 -c 'import json,sys,urllib.parse; d=json.load(open(sys.argv[1])); print("https://ai-mongolia.netlify.app/#connect?" + urllib.parse.urlencode({"device": d["device_id"], "token": d["control_token"]}))' "$APP_DIR/identity.json")
+  open "$CLAIM_URL"
+fi
+
 echo "LocalBridge is installed and running."
 echo "Open https://ai-mongolia.netlify.app/#connect to pair this device."
 if [ "${LOCALBRIDGE_NONINTERACTIVE:-0}" != "1" ]; then

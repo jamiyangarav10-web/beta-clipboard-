@@ -131,6 +131,8 @@ if not "%AGENT_READY%"=="1" (
   exit /b 1
 )
 
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$identityPath = Join-Path $env:LOCALAPPDATA 'LocalBridge\identity.json'; if (Test-Path $identityPath) { $identity = Get-Content -Raw $identityPath | ConvertFrom-Json; $url = 'https://ai-mongolia.netlify.app/#connect?device=' + [uri]::EscapeDataString($identity.device_id) + '&token=' + [uri]::EscapeDataString($identity.control_token); Start-Process $url }"
+
 echo LocalBridge is installed and running.
 echo Open https://ai-mongolia.netlify.app/#connect to pair this device.
 if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause

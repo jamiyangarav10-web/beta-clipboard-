@@ -278,6 +278,51 @@ textarea {
   fill: currentColor;
 }
 
+.agent-status-banner {
+  align-items: center;
+  border: 1px solid;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  margin-top: 1rem;
+  padding: 0.85rem;
+}
+
+.agent-status-banner.online {
+  background: #e8f7f1;
+  border-color: #b8dfd0;
+  color: #0c684d;
+}
+
+.agent-status-banner.offline {
+  background: #fff5e8;
+  border-color: #e7cda8;
+  color: #704515;
+}
+
+.agent-status-banner div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.agent-status-banner strong,
+.agent-status-banner span {
+  overflow-wrap: anywhere;
+}
+
+.agent-status-banner span {
+  font-size: 0.8rem;
+}
+
+.agent-status-banner a {
+  color: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .state-list {
   display: grid;
   gap: 0.45rem;

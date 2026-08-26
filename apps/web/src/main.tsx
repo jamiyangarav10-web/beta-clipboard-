@@ -60,6 +60,19 @@ type AgentStatus = {
   };
 };
 
+type AgentClaim = {
+  deviceId: string;
+  controlToken: string;
+};
+
+type CloudAgentPoll = {
+  device: Device;
+  sessions: PairingSession[];
+  credentials?: {
+    devices?: Device[];
+  } | null;
+};
+
 type PairingSession = {
   pairingId: string;
   state: PairingState;
@@ -150,6 +163,10 @@ const COPY = {
     waitingPeer: "No paired device yet",
     pairedDevice: "Paired device",
     agentOnline: "Agent online",
+    agentConnected: "Agent connected",
+    agentOffline: "Agent offline",
+    agentOfflineBody: "Install or restart LocalBridge, then return to this page.",
+    installAgent: "Install agent",
     waitingAgent: "Waiting for agent",
     progressTitle: "Connection progress",
     progressThisDevice: "This device is ready",
@@ -273,6 +290,10 @@ const COPY = {
     waitingPeer: "Холбогдсон төхөөрөмж алга",
     pairedDevice: "Холбогдсон төхөөрөмж",
     agentOnline: "Agent online",
+    agentConnected: "Agent холбогдлоо",
+    agentOffline: "Agent offline байна",
+    agentOfflineBody: "LocalBridge-ийг суулгах эсвэл дахин асаагаад энэ хуудсанд буцаж ирнэ үү.",
+    installAgent: "Agent суулгах",
     waitingAgent: "Agent хүлээж байна",
     progressTitle: "Холболтын явц",
     progressThisDevice: "Энэ төхөөрөмж бэлэн",
@@ -343,6 +364,7 @@ const COPY = {
 
 function App() {
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem("localbridge-language") as Language) || "en");
+  const [agentClaim] = useState<AgentClaim | null>(() => loadAgentClaim());
   const [webIdentity] = useState<WebIdentity>(() => loadWebIdentity());
   const [webPairingId, setWebPairingId] = useState("");
   const [webJoinPairingId, setWebJoinPairingId] = useState("");
@@ -358,6 +380,7 @@ function App() {
   const [state, setState] = useState<PairingState>("UNPAIRED");
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [agentBaseUrl, setAgentBaseUrl] = useState(LOCAL_AGENT_URLS[0]);
+  const [agentTransport, setAgentTransport] = useState<"local" | "cloud" | "offline">("offline");
   const t = COPY[language];
   const [message, setMessage] = useState(t.installStart);
   const [busy, setBusy] = useState(false);
@@ -397,6 +420,7 @@ function App() {
         const { data, baseUrl } = await fetchLocalAgentStatus();
         if (!mounted) return;
         setAgentBaseUrl(baseUrl);
+        setAgentTransport("local");
         setAgentStatus(data);
         const localDevice: Device = {
           deviceId: data.deviceId,
@@ -434,11 +458,49 @@ function App() {
         }
       } catch {
         if (!mounted) return;
+        if (agentClaim) {
+          try {
+            const cloud = await backendJson<CloudAgentPoll>("/device/poll", agentClaim);
+            if (!mounted) return;
+            const activeSession = [...(cloud.sessions || [])].sort((a, b) => (b.expiresAt || 0) - (a.expiresAt || 0))[0] || null;
+            const peer = cloud.credentials?.devices?.find((device) => device.deviceId !== cloud.device.deviceId) || null;
+            const cloudState: PairingState = cloud.credentials ? "CONNECTED" : activeSession?.state || cloud.device.state || "UNPAIRED";
+            const cloudStatus: AgentStatus = {
+              deviceId: cloud.device.deviceId,
+              deviceName: cloud.device.deviceName,
+              platform: cloud.device.platform,
+              state: cloudState,
+              hasCredentials: Boolean(cloud.credentials),
+              syncEnabled: Boolean(cloud.credentials),
+              engineRunning: Boolean(cloud.credentials),
+              pairedDevice: peer ? {
+                device_id: peer.deviceId,
+                device_name: peer.deviceName,
+                platform: peer.platform,
+              } : {},
+            };
+            setAgentTransport("cloud");
+            setAgentStatus(cloudStatus);
+            setDevices(peer ? [cloud.device, peer] : [cloud.device]);
+            setSelectedDeviceId(cloud.device.deviceId);
+            setState(cloudState);
+            if (activeSession) {
+              setPairingId(activeSession.pairingId);
+              setJoinPairingId(activeSession.pairingId);
+              setSession(activeSession);
+            }
+            setMessage(cloud.credentials ? t.pairedDone : t.chooseDevice);
+            return;
+          } catch {
+            // The saved claim may refer to an agent that is no longer online.
+          }
+        }
         setDevices([]);
         setSelectedDeviceId("");
         setAgentStatus(null);
+        setAgentTransport("offline");
         setState("UNPAIRED");
-        setMessage(t.browserBlocked);
+        setMessage(t.agentOfflineBody);
       }
     };
 
@@ -448,7 +510,7 @@ function App() {
       mounted = false;
       window.clearInterval(interval);
     };
-  }, [t]);
+  }, [agentClaim, t]);
 
   useEffect(() => {
     if (!pairingId) {
@@ -555,7 +617,9 @@ function App() {
   const createSession = async () => {
     if (!requireDevice()) return;
     try {
-      const data = await callAgent<{ pairingId: string; state: PairingState }>("/api/pairing/session");
+      const data = agentTransport === "cloud" && agentClaim
+        ? await backendJson<{ pairingId: string; state: PairingState }>("/session", { deviceId: agentClaim.deviceId })
+        : await callAgent<{ pairingId: string; state: PairingState }>("/api/pairing/session");
       setPairingId(data.pairingId);
       setJoinPairingId(data.pairingId);
       setState(data.state);
@@ -573,9 +637,14 @@ function App() {
       return;
     }
     try {
-      const data = await callAgent<{ pairingId: string; state: PairingState }>("/api/pairing/join", {
-        pairingId: joinPairingId,
-      });
+      const data = agentTransport === "cloud" && agentClaim
+        ? await backendJson<{ pairingId: string; state: PairingState; requesterDeviceId?: string }>("/join", {
+            pairingId: joinPairingId,
+            deviceId: agentClaim.deviceId,
+          })
+        : await callAgent<{ pairingId: string; state: PairingState }>("/api/pairing/join", {
+            pairingId: joinPairingId,
+          });
       setPairingId(data.pairingId);
       setState(data.state);
       setSession((current) => ({
@@ -597,9 +666,11 @@ function App() {
       return;
     }
     try {
-      const data = await callAgent<{ pairingId: string; state: PairingState }>("/api/pairing/approve", {
-        pairingId: code,
-      });
+      const data = agentTransport === "cloud" && agentClaim
+        ? await backendJson<{ pairingId: string; state: PairingState }>("/approve", { pairingId: code })
+        : await callAgent<{ pairingId: string; state: PairingState }>("/api/pairing/approve", {
+            pairingId: code,
+          });
       setPairingId(data.pairingId);
       setState(data.state);
       setSession((current) => current ? { ...current, state: data.state, used: true } : current);
@@ -821,7 +892,6 @@ function App() {
           devices={devices}
           selectedDevice={selectedDevice}
           selectedDeviceId={selectedDeviceId}
-          setSelectedDeviceId={setSelectedDeviceId}
           busy={busy}
           state={effectiveState}
           session={session}
@@ -841,8 +911,7 @@ function App() {
           syncActive={syncActive}
           localPaired={localPaired}
           pairedDevice={pairedDevice}
-          agentBaseUrl={agentBaseUrl}
-          localAgentUrls={LOCAL_AGENT_URLS}
+          agentTransport={agentTransport}
           t={t}
         />
       </section>
@@ -968,7 +1037,6 @@ function ConnectorPanel({
   devices,
   selectedDevice,
   selectedDeviceId,
-  setSelectedDeviceId,
   busy,
   state,
   session,
@@ -988,14 +1056,12 @@ function ConnectorPanel({
   syncActive,
   localPaired,
   pairedDevice,
-  agentBaseUrl,
-  localAgentUrls,
+  agentTransport,
   t,
 }: {
   devices: Device[];
   selectedDevice: Device | null;
   selectedDeviceId: string;
-  setSelectedDeviceId: (value: string) => void;
   busy: boolean;
   state: PairingState;
   session: PairingSession | null;
@@ -1015,17 +1081,24 @@ function ConnectorPanel({
   syncActive: boolean;
   localPaired: boolean;
   pairedDevice: Device | null;
-  agentBaseUrl: string;
-  localAgentUrls: string[];
+  agentTransport: "local" | "cloud" | "offline";
   t: (typeof COPY)[Language];
 }) {
   return (
     <aside className="panel connector-panel" aria-label="LocalBridge connector">
       <div className="panel-title">
         <span>
-          <Smartphone size={18} /> {devices.length ? t.agentOnline : t.waitingAgent}
+          <Smartphone size={18} /> {devices.length ? t.agentConnected : t.agentOffline}
         </span>
-        <CheckCircle2 size={18} />
+        {devices.length ? <CheckCircle2 size={18} /> : <Power size={18} />}
+      </div>
+      <div className={`agent-status-banner ${devices.length ? "online" : "offline"}`}>
+        <PlatformIcon platform={selectedDevice?.platform} size={22} />
+        <div>
+          <strong>{devices.length ? `${t.agentConnected}: ${selectedDevice?.deviceName}` : t.agentOffline}</strong>
+          <span>{devices.length ? `${selectedDevice?.platform} · ${agentTransport === "cloud" ? "Cloud" : "Local"}` : t.agentOfflineBody}</span>
+        </div>
+        {!devices.length && <a href="#downloads">{t.installAgent}</a>}
       </div>
       {connectionReady && (
         <div className="connected-banner">
@@ -1048,13 +1121,6 @@ function ConnectorPanel({
           <span>{peerName}</span>
         </div>
       </div>
-      <div className="state-list">
-        {["UNPAIRED", "PAIRING", "PAIR_APPROVAL_REQUIRED", "PAIRED", "CONNECTED", "DISCONNECTED", "RECONNECTING"].map((item, index) => (
-          <span className={index === statusIndex(state) ? "active-state" : ""} key={item}>
-            {item}
-          </span>
-        ))}
-      </div>
       <PairingProgress
         session={session}
         state={state}
@@ -1067,29 +1133,8 @@ function ConnectorPanel({
       />
       <div className="connector-meta">
         <p>{devices.length ? t.chooseAgent : t.startNative}</p>
-        <p>{t.backend}: {agentBaseUrl}</p>
       </div>
-      {!devices.length && (
-        <div className="agent-fallback">
-          {localAgentUrls.map((url) => (
-            <a className="button secondary" href={url} target="_blank" rel="noreferrer" key={url}>
-              <Power size={16} /> {t.openLocalAgent}
-            </a>
-          ))}
-        </div>
-      )}
       <div className="pairing-fields">
-        <label>
-          {t.thisComputer}
-          <select value={selectedDeviceId} onChange={(event) => setSelectedDeviceId(event.target.value)}>
-            <option value="">{t.noOnline}</option>
-            {devices.map((device) => (
-              <option value={device.deviceId} key={device.deviceId}>
-                {device.deviceName} ({device.platform})
-              </option>
-            ))}
-          </select>
-        </label>
         <label>
           {t.pairingCode}
           <input
@@ -1105,10 +1150,10 @@ function ConnectorPanel({
         <button type="button" onClick={createSession} disabled={busy || !selectedDeviceId}>
           <Link2 size={16} /> {t.createCode}
         </button>
-        <button type="button" onClick={joinSession} disabled={busy || !selectedDeviceId}>
+        <button type="button" onClick={joinSession} disabled={busy || !selectedDeviceId || joinPairingId.length !== 6}>
           <Clipboard size={16} /> {t.joinCode}
         </button>
-        <button type="button" onClick={approveSession} disabled={busy}>
+        <button type="button" onClick={approveSession} disabled={busy || !selectedDeviceId || !(pairingId || joinPairingId)}>
           <CheckCircle2 size={16} /> {t.finishPairing}
         </button>
         <button type="button" onClick={copyPairingId} disabled={!pairingId}>
@@ -1284,25 +1329,6 @@ function WebFallbackPanel({
   );
 }
 
-function statusIndex(state: PairingState | undefined) {
-  switch (state) {
-    case "PAIRING":
-      return 1;
-    case "PAIR_APPROVAL_REQUIRED":
-      return 2;
-    case "PAIRED":
-      return 3;
-    case "CONNECTED":
-      return 4;
-    case "DISCONNECTED":
-      return 5;
-    case "RECONNECTING":
-      return 6;
-    default:
-      return 0;
-  }
-}
-
 function PairingProgress({
   session,
   state,
@@ -1383,6 +1409,29 @@ async function fetchLocalAgentStatus() {
     }
   }
   throw lastError instanceof Error ? lastError : new Error("LocalBridge agent not found");
+}
+
+function loadAgentClaim(): AgentClaim | null {
+  const storageKey = "localbridge-agent-claim";
+  const hash = window.location.hash;
+  const queryIndex = hash.indexOf("?");
+  if (queryIndex >= 0) {
+    const params = new URLSearchParams(hash.slice(queryIndex + 1));
+    const deviceId = params.get("device") || "";
+    const controlToken = params.get("token") || "";
+    if (deviceId.startsWith("lb_") && controlToken.length >= 32) {
+      const claim = { deviceId, controlToken };
+      localStorage.setItem(storageKey, JSON.stringify(claim));
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#connect`);
+      return claim;
+    }
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "null") as AgentClaim | null;
+    return saved?.deviceId && saved?.controlToken ? saved : null;
+  } catch {
+    return null;
+  }
 }
 
 async function backendJson<T = unknown>(path: string, body?: unknown): Promise<T> {
