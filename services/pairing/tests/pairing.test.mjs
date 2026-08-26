@@ -160,3 +160,24 @@ test("relay rejects files larger than the beta cloud limit", async () => {
   });
   assert.equal(sent.status, 413);
 });
+
+test("relay recovers the approved session when a device refresh loses its pairing pointer", async () => {
+  const store = createMemoryStore();
+  await store.clear();
+  const service = new PairingService(store);
+  await service.registerDevice({ ...windows, controlToken: "windows-token" });
+  await service.registerDevice({ ...mac, controlToken: "mac-token" });
+  const created = await service.createSession({ deviceId: windows.deviceId });
+  await service.joinSession({ pairingId: created.body.pairingId, deviceId: mac.deviceId });
+  await service.approveSession({ pairingId: created.body.pairingId });
+
+  const refreshed = await store.get(`device:${windows.deviceId}`);
+  await store.set(`device:${windows.deviceId}`, { ...refreshed, currentPairingId: null, state: "UNPAIRED" });
+  const sent = await service.sendRelayMessage({
+    deviceId: windows.deviceId,
+    controlToken: "windows-token",
+    toDeviceId: mac.deviceId,
+    message: { type: "clipboard", text: "recovered" }
+  });
+  assert.equal(sent.status, 200);
+});

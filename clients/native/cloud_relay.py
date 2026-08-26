@@ -25,7 +25,7 @@ MAX_TRANSFER_BYTES = int(os.environ.get("LOCALBRIDGE_MAX_TRANSFER_BYTES", str(8 
 OUTBOX_DIR = CONFIG_DIR / "outbox"
 DOWNLOAD_DIR = Path.home() / "Downloads" / "LocalBridge"
 IS_WINDOWS = sys.platform == "win32"
-POLL_SECONDS = 0.7
+POLL_SECONDS = 0.35
 
 
 def log(message):
@@ -208,18 +208,15 @@ def main():
     if not DEVICE_ID or not CONTROL_TOKEN:
         log("Missing relay identity")
         return 1
-    last_local = None
+    try:
+        last_local = clipboard_get()
+    except Exception:
+        last_local = None
     last_received = None
     log("LocalBridge cloud relay started")
     while True:
         try:
             flush_outbox()
-            current = clipboard_get()
-            if isinstance(current, str) and current != last_local and current != last_received:
-                if relay_send({"type": "clipboard", "text": current}):
-                    last_local = current
-                    log(f"Clipboard sent through relay ({len(current)} chars)")
-
             for item in relay_poll():
                 message = item.get("message") or {}
                 if message.get("type") == "clipboard":
@@ -232,6 +229,12 @@ def main():
                     target = save_received_file(message)
                     if target:
                         log(f"File received through relay: {target}")
+
+            current = clipboard_get()
+            if isinstance(current, str) and current != last_local and current != last_received:
+                if relay_send({"type": "clipboard", "text": current}):
+                    last_local = current
+                    log(f"Clipboard sent through relay ({len(current)} chars)")
         except Exception as error:
             log(f"Relay loop error: {error}")
         time.sleep(POLL_SECONDS)

@@ -293,7 +293,19 @@ export class PairingService {
     if (device.controlTokenHash && device.controlTokenHash !== hashToken(body.controlToken)) {
       return { ok: false, result: { status: 403, body: { error: "invalid device token" } } };
     }
-    const session = device.currentPairingId ? await this.store.get(sessionKey(device.currentPairingId)) : null;
+    let session = device.currentPairingId ? await this.store.get(sessionKey(device.currentPairingId)) : null;
+    if (!session?.used || !session.credentials) {
+      const ids = await this.store.get(sessionIndexKey()) || [];
+      const approved = [];
+      for (const id of ids) {
+        const candidate = await this.store.get(sessionKey(id));
+        if (!candidate?.used || !candidate.credentials) continue;
+        if (candidate.requesterDeviceId === device.deviceId || candidate.responderDeviceId === device.deviceId) {
+          approved.push(candidate);
+        }
+      }
+      session = approved.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0] || null;
+    }
     if (!session?.used || !session.credentials) {
       return { ok: false, result: { status: 409, body: { error: "device is not paired" } } };
     }
