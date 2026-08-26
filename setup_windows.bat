@@ -7,6 +7,8 @@ set "BAT_RUNNER=%APP_DIR%\run-localbridge-agent.bat"
 set "DIAG=%APP_DIR%\diagnose-localbridge.bat"
 set "PYTHON_INSTALLER=%TEMP%\localbridge-python-3.12.10-amd64.exe"
 set "PY_CMD="
+set "PY_EXE="
+set "PY_BG_EXE="
 
 where python >nul 2>nul
 if %ERRORLEVEL% EQU 0 set "PY_CMD=python"
@@ -59,11 +61,26 @@ copy /Y cloud_relay.py "%APP_DIR%\cloud_relay.py" >nul
 copy /Y requirements.txt "%APP_DIR%\requirements.txt" >nul
 
 %PY_CMD% -m pip install --user -r "%APP_DIR%\requirements.txt"
+if !ERRORLEVEL! NEQ 0 (
+  echo LocalBridge dependencies could not be installed.
+  if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
+  exit /b 1
+)
+
+for /f "usebackq delims=" %%P in (`%PY_CMD% -c "import sys; print(sys.executable)"`) do set "PY_EXE=%%P"
+if not exist "!PY_EXE!" (
+  echo LocalBridge could not resolve the Python executable.
+  if not "%LOCALBRIDGE_NONINTERACTIVE%"=="1" pause
+  exit /b 1
+)
+
+set "PY_BG_EXE=!PY_EXE!"
+for %%P in ("!PY_EXE!") do if exist "%%~dpPpythonw.exe" set "PY_BG_EXE=%%~dpPpythonw.exe"
 
 (
   echo @echo off
   echo cd /d "%%~dp0"
-  echo %PY_CMD% agent.py
+  echo "!PY_EXE!" agent.py
 ) > "%BAT_RUNNER%"
 
 (
@@ -76,8 +93,16 @@ copy /Y requirements.txt "%APP_DIR%\requirements.txt" >nul
   echo pause
 ) > "%DIAG%"
 
-echo Starting LocalBridge in a visible terminal window...
-start "LocalBridge Agent" cmd /k ""%BAT_RUNNER%""
+set "LOCALBRIDGE_PY_BG=!PY_BG_EXE!"
+set "LOCALBRIDGE_AGENT_PATH=%APP_DIR%\agent.py"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; $command = [char]34 + $env:LOCALBRIDGE_PY_BG + [char]34 + ' ' + [char]34 + $env:LOCALBRIDGE_AGENT_PATH + [char]34; New-Item -Path $runKey -Force | Out-Null; Set-ItemProperty -Path $runKey -Name 'LocalBridge' -Value $command"
+if !ERRORLEVEL! NEQ 0 (
+  echo Warning: Windows automatic startup could not be registered.
+  echo You can still start LocalBridge with "%BAT_RUNNER%".
+)
+
+echo Starting LocalBridge in the background...
+start "" /B "!PY_BG_EXE!" "%APP_DIR%\agent.py"
 
 set "AGENT_READY=0"
 for /L %%I in (1,1,15) do (

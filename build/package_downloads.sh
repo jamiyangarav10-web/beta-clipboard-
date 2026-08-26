@@ -42,7 +42,7 @@ LocalBridge for Windows
 2. Open https://ai-mongolia.netlify.app/#connect and pair this device.
 
 The installer runs LocalBridge in the background at http://127.0.0.1:17833 and
-adds it to your Windows Startup folder.
+registers it to start automatically when you sign in to Windows.
 EOF
 
 (
