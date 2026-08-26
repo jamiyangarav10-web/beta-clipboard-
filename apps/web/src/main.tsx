@@ -617,8 +617,8 @@ function App() {
 
   const copyInstallCommand = async (platform: "mac" | "windows") => {
     const command = platform === "mac"
-      ? "curl -fsSL https://clipboardbeta.netlify.app/install/mac.sh | bash"
-      : "powershell -NoProfile -ExecutionPolicy Bypass -Command \"iwr https://clipboardbeta.netlify.app/install/windows.ps1 -UseB | iex\"";
+      ? "curl -fsSL https://majestic-taiyaki-c806ec.netlify.app/install/mac.sh | bash"
+      : "powershell -NoProfile -ExecutionPolicy Bypass -Command \"iwr https://majestic-taiyaki-c806ec.netlify.app/install/windows.ps1 -UseB | iex\"";
     await navigator.clipboard.writeText(command);
     setMessage(platform === "mac" ? t.macCommandCopied : t.windowsCommandCopied);
   };
@@ -892,14 +892,14 @@ function App() {
             <CommandBox
               platform="macos"
               title="macOS"
-              command="curl -fsSL https://clipboardbeta.netlify.app/install/mac.sh | bash"
+              command="curl -fsSL https://majestic-taiyaki-c806ec.netlify.app/install/mac.sh | bash"
               copyLabel={t.copyCommand}
               onCopy={() => copyInstallCommand("mac")}
             />
             <CommandBox
               platform="windows"
               title="Windows"
-              command={'powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://clipboardbeta.netlify.app/install/windows.ps1 -UseB | iex"'}
+              command={'powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://majestic-taiyaki-c806ec.netlify.app/install/windows.ps1 -UseB | iex"'}
               copyLabel={t.copyCommand}
               onCopy={() => copyInstallCommand("windows")}
             />

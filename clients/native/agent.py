@@ -45,7 +45,7 @@ SYNC_PORT = int(os.environ.get("SYNC_PORT", "8765"))
 MAX_TRANSFER_BYTES = int(os.environ.get("LOCALBRIDGE_MAX_TRANSFER_BYTES", str(8 * 1024 * 1024)))
 BACKEND = os.environ.get(
     "BACKEND_BASE_URL",
-    "https://clipboardbeta.netlify.app/.netlify/functions/pairing",
+    "https://majestic-taiyaki-c806ec.netlify.app/.netlify/functions/pairing",
 )
 
 PLATFORM = "macos" if sys.platform == "darwin" else "windows"

@@ -18,7 +18,7 @@ from pathlib import Path
 CONFIG_DIR = Path(os.environ.get("LOCALBRIDGE_HOME", Path.home() / "Library/Application Support/LocalBridge"))
 ENV_PATH = Path(os.environ.get("LOCALBRIDGE_ENV_PATH", CONFIG_DIR / ".env"))
 CREDENTIALS_PATH = Path(os.environ.get("LOCALBRIDGE_CREDENTIALS_PATH", CONFIG_DIR / "credentials.json"))
-BACKEND = os.environ.get("LOCALBRIDGE_BACKEND_BASE_URL", "https://clipboardbeta.netlify.app/.netlify/functions/pairing")
+BACKEND = os.environ.get("LOCALBRIDGE_BACKEND_BASE_URL", "https://majestic-taiyaki-c806ec.netlify.app/.netlify/functions/pairing")
 DEVICE_ID = os.environ.get("LOCALBRIDGE_DEVICE_ID", "")
 CONTROL_TOKEN = os.environ.get("LOCALBRIDGE_CONTROL_TOKEN", "")
 MAX_TRANSFER_BYTES = int(os.environ.get("LOCALBRIDGE_MAX_TRANSFER_BYTES", str(8 * 1024 * 1024)))

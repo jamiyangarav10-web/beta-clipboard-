@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $BaseUrl = $env:LOCALBRIDGE_BASE_URL
 if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
-  $BaseUrl = "https://clipboardbeta.netlify.app"
+  $BaseUrl = "https://majestic-taiyaki-c806ec.netlify.app"
 }
 
 $WorkDir = Join-Path $env:TEMP ("LocalBridge-" + [guid]::NewGuid().ToString("N"))

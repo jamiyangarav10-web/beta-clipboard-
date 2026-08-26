@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-BASE_URL="${LOCALBRIDGE_BASE_URL:-https://clipboardbeta.netlify.app}"
+BASE_URL="${LOCALBRIDGE_BASE_URL:-https://majestic-taiyaki-c806ec.netlify.app}"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
