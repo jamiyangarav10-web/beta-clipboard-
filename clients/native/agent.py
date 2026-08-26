@@ -19,6 +19,7 @@ import sys
 import json
 import time
 import base64
+import ipaddress
 import socket
 import subprocess
 import threading
@@ -165,6 +166,24 @@ def parse_endpoint_port(endpoint, default=8765):
         return default
     parsed = urlparse(value if "://" in value else "//" + value)
     return parsed.port or default
+
+
+def is_tailscale_host(host):
+    try:
+        return ipaddress.ip_address(str(host or "")) in ipaddress.ip_network("100.64.0.0/10")
+    except ValueError:
+        return False
+
+
+def direct_transport_available(credentials):
+    paired = credentials.get("paired_device") or {}
+    transport = credentials.get("transport") or {}
+    platforms = {PLATFORM, paired.get("platform")}
+    return (
+        platforms == {"macos", "windows"}
+        and is_tailscale_host(paired.get("direct_host"))
+        and is_tailscale_host(transport.get("listen_host"))
+    )
 
 
 def save_pairing_credentials(raw_credentials):
@@ -439,9 +458,10 @@ def backend_poll_loop():
 
 
 def sync_command():
-    transport = (load_credentials().get("transport") or {}).get("kind", "cloud-relay")
+    credentials = load_credentials()
+    transport = (credentials.get("transport") or {}).get("kind", "cloud-relay")
     relay_script = os.path.join(CONFIG_DIR, "cloud_relay.py")
-    if transport == "cloud-relay" and os.path.exists(relay_script):
+    if transport == "cloud-relay" and not direct_transport_available(credentials) and os.path.exists(relay_script):
         return [sys.executable, relay_script]
     if PLATFORM == "macos":
         return [sys.executable, os.path.join(CONFIG_DIR, "mac", "sync_client.py")]
