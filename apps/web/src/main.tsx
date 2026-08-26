@@ -43,6 +43,7 @@ type Device = {
 type Language = "en" | "mn";
 
 const LOCAL_AGENT_URLS = ["http://localhost:17833", "http://127.0.0.1:17833"];
+const MAX_CLOUD_FILE_BYTES = 3 * 1024 * 1024;
 
 type AgentStatus = {
   deviceId: string;
@@ -194,7 +195,7 @@ const COPY = {
     sendFile: "Send file",
     chooseFile: "Choose file",
     fileQueued: "File queued. It will be saved on the paired device.",
-    fileTooLarge: "This beta supports files up to 8 MB.",
+    fileTooLarge: "This beta supports files and images up to 3 MB.",
     fileSendError: "Could not send that file.",
     noCode: "No pairing code yet",
     codeSummary: "Enter this code on the other computer, then finish pairing here.",
@@ -321,7 +322,7 @@ const COPY = {
     sendFile: "Файл явуулах",
     chooseFile: "Файл сонгох",
     fileQueued: "Файл queue-д орлоо. Нөгөө төхөөрөмж дээр хадгалагдана.",
-    fileTooLarge: "Энэ beta дээр 8 MB хүртэл файл дэмжинэ.",
+    fileTooLarge: "Энэ beta дээр 3 MB хүртэл файл болон зураг дэмжинэ.",
     fileSendError: "Энэ файлыг явуулж чадсангүй.",
     noCode: "Pairing code алга",
     codeSummary: "Энэ code-г нөгөө компьютер дээр оруулаад энд pairing-г дуусгана.",
@@ -722,17 +723,29 @@ function App() {
       setMessage(t.startThisComputer);
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
+    if (file.size > MAX_CLOUD_FILE_BYTES) {
       setMessage(t.fileTooLarge);
       return;
     }
     try {
       const data = await fileToBase64(file);
-      await callAgent("/api/send-file", {
+      const messageBody = {
+        type: "file" as const,
         name: file.name,
         mime: file.type || "application/octet-stream",
         data,
-      });
+        size: file.size,
+      };
+      if (agentTransport === "cloud" && agentClaim && pairedDevice?.deviceId) {
+        await backendJson("/relay/send", {
+          deviceId: agentClaim.deviceId,
+          controlToken: agentClaim.controlToken,
+          toDeviceId: pairedDevice.deviceId,
+          message: messageBody,
+        });
+      } else {
+        await callAgent("/api/send-file", messageBody);
+      }
       setMessage(t.fileQueued);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t.fileSendError);
@@ -837,7 +850,7 @@ function App() {
 
   const sendWebFile = async (file: File | null) => {
     if (!file) return;
-    if (file.size > 8 * 1024 * 1024) {
+    if (file.size > MAX_CLOUD_FILE_BYTES) {
       setMessage(t.fileTooLarge);
       return;
     }

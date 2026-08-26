@@ -141,3 +141,22 @@ test("paired agents can exchange relay messages", async () => {
   const empty = await service.pollRelayMessages({ deviceId: mac.deviceId, controlToken: "mac-token" });
   assert.equal(empty.body.messages.length, 0);
 });
+
+test("relay rejects files larger than the beta cloud limit", async () => {
+  const store = createMemoryStore();
+  await store.clear();
+  const service = new PairingService(store);
+  await service.registerDevice({ ...windows, controlToken: "windows-token" });
+  await service.registerDevice({ ...mac, controlToken: "mac-token" });
+  const created = await service.createSession({ deviceId: windows.deviceId });
+  await service.joinSession({ pairingId: created.body.pairingId, deviceId: mac.deviceId });
+  await service.approveSession({ pairingId: created.body.pairingId });
+
+  const sent = await service.sendRelayMessage({
+    deviceId: windows.deviceId,
+    controlToken: "windows-token",
+    toDeviceId: mac.deviceId,
+    message: { type: "file", name: "large.bin", data: Buffer.alloc((3 * 1024 * 1024) + 1).toString("base64") }
+  });
+  assert.equal(sent.status, 413);
+});

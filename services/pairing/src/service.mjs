@@ -6,6 +6,7 @@ export const PAIRING_TTL_MS = 5 * 60 * 1000;
 export const DEVICE_TTL_MS = 10 * 60 * 1000;
 export const RELAY_MESSAGE_TTL_MS = 2 * 60 * 1000;
 export const MAX_RELAY_MESSAGES = 50;
+export const MAX_RELAY_FILE_BYTES = 3 * 1024 * 1024;
 
 function nowMs(clock) {
   return typeof clock === "function" ? clock() : Date.now();
@@ -226,6 +227,15 @@ export class PairingService {
     if (message.type === "file") {
       if (typeof message.name !== "string" || typeof message.data !== "string") {
         return { status: 400, body: { error: "file name and data required" } };
+      }
+      let decoded;
+      try {
+        decoded = Buffer.from(message.data, "base64");
+      } catch {
+        return { status: 400, body: { error: "file data is not valid base64" } };
+      }
+      if (decoded.byteLength > MAX_RELAY_FILE_BYTES) {
+        return { status: 413, body: { error: "file exceeds 3 MB beta limit" } };
       }
     }
     const toDeviceId = body?.toDeviceId || auth.peer.deviceId;
