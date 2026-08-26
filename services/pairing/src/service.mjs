@@ -20,6 +20,10 @@ function deviceKey(id) {
   return `device:${id}`;
 }
 
+function devicePairingKey(id) {
+  return `device-pairing:${id}`;
+}
+
 function deviceIndexKey() {
   return "devices:index";
 }
@@ -50,6 +54,8 @@ export class PairingService {
     const valid = validatePairingRegistration(body);
     if (!valid.ok) return { status: 400, body: { error: valid.reason } };
     const existing = await this.store.get(deviceKey(body.deviceId));
+    const pairing = await this.store.get(devicePairingKey(body.deviceId));
+    const currentPairingId = pairing?.pairingId || existing?.currentPairingId || null;
 
     const device = {
       deviceId: body.deviceId,
@@ -59,8 +65,8 @@ export class PairingService {
       directEndpoint: body.directEndpoint || "",
       controlTokenHash: body.controlToken ? hashToken(body.controlToken) : "",
       approvedPairings: existing?.approvedPairings || [],
-      currentPairingId: existing?.currentPairingId || null,
-      state: existing?.currentPairingId ? "PAIRED" : "UNPAIRED",
+      currentPairingId,
+      state: currentPairingId ? "PAIRED" : "UNPAIRED",
       expiresAt: nowMs(this.clock) + DEVICE_TTL_MS,
       updatedAt: nowMs(this.clock)
     };
@@ -75,7 +81,8 @@ export class PairingService {
     for (const id of ids) {
       const device = await this.store.get(deviceKey(id));
       if (device && device.expiresAt > nowMs(this.clock)) {
-        devices.push(publicDevice(device));
+        const pairing = await this.store.get(devicePairingKey(id));
+        devices.push(publicDevice(device, pairing));
       }
     }
     return { status: 200, body: { devices } };
@@ -161,6 +168,16 @@ export class PairingService {
     session.state = "PAIRED";
     session.credentials = credentials;
     await this.store.set(sessionKey(session.pairingId), session);
+    await this.store.set(devicePairingKey(requester.deviceId), {
+      pairingId: session.pairingId,
+      peerDeviceId: responder.deviceId,
+      updatedAt: nowMs(this.clock)
+    });
+    await this.store.set(devicePairingKey(responder.deviceId), {
+      pairingId: session.pairingId,
+      peerDeviceId: requester.deviceId,
+      updatedAt: nowMs(this.clock)
+    });
     await this.store.set(deviceKey(requester.deviceId), { ...requester, state: "PAIRED", currentPairingId: session.pairingId });
     await this.store.set(deviceKey(responder.deviceId), { ...responder, state: "PAIRED", currentPairingId: session.pairingId });
 
@@ -178,6 +195,7 @@ export class PairingService {
     if (device.controlTokenHash && device.controlTokenHash !== hashToken(body.controlToken)) {
       return { status: 403, body: { error: "invalid device token" } };
     }
+    const pairing = await this.store.get(devicePairingKey(device.deviceId));
 
     const sessions = [];
     const ids = await this.store.get(sessionIndexKey()) || [];
@@ -192,8 +210,9 @@ export class PairingService {
     }
 
     let pairedSession = null;
-    if (device.currentPairingId) {
-      const currentSession = await this.store.get(sessionKey(device.currentPairingId));
+    const currentPairingId = pairing?.pairingId || device.currentPairingId;
+    if (currentPairingId) {
+      const currentSession = await this.store.get(sessionKey(currentPairingId));
       if (currentSession?.used && currentSession.credentials) pairedSession = currentSession;
     }
     if (!pairedSession) {
@@ -204,7 +223,7 @@ export class PairingService {
     return {
       status: 200,
       body: {
-        device: publicDevice(device),
+        device: publicDevice(device, pairing),
         sessions,
         credentials: pairedSession?.credentials || null
       }
@@ -293,7 +312,9 @@ export class PairingService {
     if (device.controlTokenHash && device.controlTokenHash !== hashToken(body.controlToken)) {
       return { ok: false, result: { status: 403, body: { error: "invalid device token" } } };
     }
-    let session = device.currentPairingId ? await this.store.get(sessionKey(device.currentPairingId)) : null;
+    const pairing = await this.store.get(devicePairingKey(device.deviceId));
+    const currentPairingId = pairing?.pairingId || device.currentPairingId;
+    let session = currentPairingId ? await this.store.get(sessionKey(currentPairingId)) : null;
     if (!session?.used || !session.credentials) {
       const ids = await this.store.get(sessionIndexKey()) || [];
       const approved = [];
@@ -338,14 +359,15 @@ export class PairingService {
   }
 }
 
-function publicDevice(device) {
+function publicDevice(device, pairing = null) {
+  const currentPairingId = pairing?.pairingId || device.currentPairingId || null;
   return {
     deviceId: device.deviceId,
     deviceName: device.deviceName,
     platform: device.platform,
     directEndpoint: device.directEndpoint,
-    state: device.state,
-    currentPairingId: device.currentPairingId || null,
+    state: currentPairingId ? "PAIRED" : device.state,
+    currentPairingId,
     publicKey: device.publicKey
   };
 }
