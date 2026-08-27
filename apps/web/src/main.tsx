@@ -906,7 +906,7 @@ function App() {
             <ShieldCheck size={16} /> {t.eyebrow}
           </p>
           <h1 className="device-headline" aria-label={t.heroTitle}>
-            <img className="devices-render" src="/brand/localbridge-devices-v3.png" alt="" />
+            <img className="devices-render" src="/brand/localbridge-devices-v3.jpg" alt="" />
             <span className="headline-synced" aria-hidden="true">
               <CheckCircle2 size={18} />
               <span>
