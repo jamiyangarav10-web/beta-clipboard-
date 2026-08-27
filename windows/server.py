@@ -282,7 +282,7 @@ async def handle_client(websocket) -> None:
                 continue
 
             last_clipboard = text
-            clipboard_set_with_retry(text)
+            await asyncio.to_thread(clipboard_set_with_retry, text)
             log.info("Clipboard updated from client (%d chars)", len(text))
 
     except websockets.ConnectionClosed:
@@ -303,24 +303,23 @@ async def monitor_windows_clipboard() -> None:
 
     while True:
         try:
-            current = clipboard_get_with_retry()
+            current = await asyncio.to_thread(clipboard_get_with_retry)
             if isinstance(current, str) and current != last_clipboard:
                 if block_sensitive(current):
                     log.info("Clipboard item blocked by sensitive-data filter")
                     last_clipboard = current
-                    continue
+                else:
+                    last_clipboard = current
+                    disconnected = []
+                    for client in list(clients):
+                        try:
+                            await client.send(clipboard_message(current))
+                        except Exception:
+                            disconnected.append(client)
+                    for c in disconnected:
+                        clients.discard(c)
 
-                last_clipboard = current
-                disconnected = []
-                for client in list(clients):
-                    try:
-                        await client.send(clipboard_message(current))
-                    except Exception:
-                        disconnected.append(client)
-                for c in disconnected:
-                    clients.discard(c)
-
-                log.info("Clipboard broadcast from Windows (%d chars)", len(current))
+                    log.info("Clipboard broadcast from Windows (%d chars)", len(current))
 
         except Exception as exc:
             log.error("Clipboard monitor error: %s", exc)
