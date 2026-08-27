@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   Github,
+  Laptop,
   Link2,
   Lock,
   Monitor,
@@ -116,6 +117,11 @@ const COPY = {
     language: "Language",
     eyebrow: "Native clipboard sync for your own devices",
     heroTitle: "Copy on one device. Paste on another.",
+    heroDesktopLine: "Copy on one device.",
+    heroLaptopLine: "Paste on",
+    heroMobileLine: "another.",
+    syncedLabel: "Synced",
+    allDevicesLabel: "All devices",
     heroText: "LocalBridge keeps your clipboard in sync across your devices without IP addresses, ports, Tailscale setup, secrets, or terminal commands.",
     connectCta: "Connect my devices",
     downloadCta: "Download LocalBridge",
@@ -243,6 +249,11 @@ const COPY = {
     language: "Хэл",
     eyebrow: "Өөрийн төхөөрөмжүүдийн native clipboard sync",
     heroTitle: "Нэг дээр copy. Нөгөө дээр paste.",
+    heroDesktopLine: "Нэг төхөөрөмж дээр хуул.",
+    heroLaptopLine: "Нөгөө дээр",
+    heroMobileLine: "буулга.",
+    syncedLabel: "Синк хийсэн",
+    allDevicesLabel: "Бүх төхөөрөмж",
     heroText: "LocalBridge нь IP, port, Tailscale, secret, terminal command тохируулахгүйгээр таны төхөөрөмжүүдийн clipboard-ийг sync хийнэ.",
     connectCta: "Төхөөрөмж холбох",
     downloadCta: "LocalBridge татах",
@@ -862,8 +873,13 @@ function App() {
     <main>
       <header className="topbar">
         <a className="brand" href="#top" aria-label="LocalBridge home">
-          <img className="brand-logo" src="/brand/automation-mongolia-logo.jpg" alt="Automation Mongolia" />
-          <span>LocalBridge</span>
+          <span className="brand-logo-crop">
+            <img src="/brand/automation-mongolia-logo.jpg" alt="Automation Mongolia" />
+          </span>
+          <span className="brand-copy">
+            <strong>LocalBridge</strong>
+            <small>Automation Mongolia</small>
+          </span>
           <span className="badge">{t.beta}</span>
         </a>
         <nav>
@@ -889,7 +905,25 @@ function App() {
           <p className="eyebrow">
             <ShieldCheck size={16} /> {t.eyebrow}
           </p>
-          <h1>{t.heroTitle}</h1>
+          <h1 className="device-headline" aria-label={t.heroTitle}>
+            <img className="devices-render" src="/brand/localbridge-devices-v3.png" alt="" />
+            <span className="headline-synced" aria-hidden="true">
+              <CheckCircle2 size={18} />
+              <span>
+                <strong>{t.syncedLabel}</strong>
+                <small>{t.allDevicesLabel}</small>
+              </span>
+            </span>
+            <span className="headline-copy headline-copy-desktop" aria-hidden="true">
+              <strong>{t.heroDesktopLine}</strong>
+            </span>
+            <span className="headline-copy headline-copy-laptop" aria-hidden="true">
+              <strong>{t.heroLaptopLine}</strong>
+            </span>
+            <span className="headline-copy headline-copy-phone" aria-hidden="true">
+              <strong>{t.heroMobileLine}</strong>
+            </span>
+          </h1>
           <p className="subtext">{t.heroText}</p>
           <div className="hero-actions">
             <a className="button primary" href="#connect">
@@ -900,6 +934,11 @@ function App() {
             </a>
           </div>
           <p className="connector-note">{message}</p>
+          <div className="hero-platforms" aria-label="Supported desktop platforms">
+            <span><PlatformIcon platform="macos" size={19} /> macOS</span>
+            <span><PlatformIcon platform="windows" size={19} /> Windows</span>
+            <span><ShieldCheck size={19} /> Private pairing</span>
+          </div>
         </div>
         <ConnectorPanel
           devices={devices}
@@ -1042,6 +1081,22 @@ function App() {
           <p>{t.faqSetupBody}</p>
         </details>
       </section>
+
+      <footer className="site-footer">
+        <a className="brand footer-brand" href="#top">
+          <span className="brand-logo-crop">
+            <img src="/brand/automation-mongolia-logo.jpg" alt="Automation Mongolia" />
+          </span>
+          <span className="brand-copy">
+            <strong>LocalBridge</strong>
+            <small>Automation Mongolia</small>
+          </span>
+        </a>
+        <span>Beta · macOS + Windows</span>
+        <a href="https://github.com/jamiyangarav10-web/beta-clipboard-" aria-label="LocalBridge on GitHub">
+          <Github size={19} />
+        </a>
+      </footer>
     </main>
   );
 }
@@ -1469,13 +1524,19 @@ function loadWebIdentity(): WebIdentity {
   }
   const platform = detectWebPlatform();
   const identity: WebIdentity = {
-    deviceId: `web_${crypto.randomUUID().replace(/-/g, "")}`,
-    controlToken: crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, ""),
+    deviceId: `web_${randomHex(16)}`,
+    controlToken: randomHex(32),
     deviceName: `${platform === "windows" ? "Windows" : "Mac"} browser`,
     platform,
   };
   localStorage.setItem(key, JSON.stringify(identity));
   return identity;
+}
+
+function randomHex(byteLength: number) {
+  const values = new Uint8Array(byteLength);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 function detectWebPlatform(): "windows" | "macos" {
@@ -1499,8 +1560,8 @@ function PlatformIcon({ platform, size = 22 }: { platform?: string; size?: numbe
   const normalized = (platform || "").toLowerCase();
   if (normalized.includes("mac") || normalized.includes("darwin")) {
     return (
-      <svg className="apple-logo" width={size} height={size} viewBox="-2 0 28 28" aria-label="Apple" role="img">
-        <path d="M16.37 1.63c.08 1.08-.31 2.13-1.05 2.94-.79.88-2.07 1.55-3.19 1.46-.1-1.04.33-2.16 1.04-2.93.8-.87 2.17-1.54 3.2-1.47Zm3.52 16.69c-.67 1.48-.99 2.14-1.85 3.45-1.2 1.82-2.89 4.09-4.98 4.11-1.86.02-2.34-1.19-4.86-1.18-2.52.01-3.05 1.2-4.91 1.18-2.09-.02-3.68-2.07-4.88-3.89-3.35-5.1-3.7-11.09-1.64-14.28 1.46-2.27 3.77-3.6 5.95-3.6 2.22 0 3.62 1.21 5.46 1.21 1.78 0 2.87-1.22 5.44-1.22 1.94 0 4 1.06 5.45 2.88-4.79 2.63-4.02 9.48.82 11.34Z" />
+      <svg className="apple-logo" width={size} height={size} viewBox="0 0 384 512" aria-label="Apple" role="img">
+        <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C83.7 140.9 43.1 168.5 43.1 224.7c0 22.2 4.1 44.9 12.3 68.2 10.9 31.2 50.2 107.6 91.2 106.4 21.4-.5 36.5-15.2 64.4-15.2 27.1 0 41.1 15.2 64.9 15.2 41.4-.6 77-70.1 87.4-101.4-55.5-26.1-44.6-77.8-44.6-79.2Zm-23.2-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 67.5-34.3Z" />
       </svg>
     );
   }
