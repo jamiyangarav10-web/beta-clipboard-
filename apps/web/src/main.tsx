@@ -17,6 +17,7 @@ import {
   Smartphone,
   Unlink
 } from "lucide-react";
+import { trackEvent } from "./analytics";
 import "./styles.css";
 
 type PairingState =
@@ -426,6 +427,21 @@ function App() {
   }, [language, t]);
 
   useEffect(() => {
+    if (!devices.length || sessionStorage.getItem("localbridge-analytics-agent-detected")) return;
+    trackEvent("agent_detected", {
+      agent_transport: agentTransport,
+      platform: selectedDevice?.platform || "unknown",
+    });
+    sessionStorage.setItem("localbridge-analytics-agent-detected", "1");
+  }, [agentTransport, devices.length, selectedDevice?.platform]);
+
+  useEffect(() => {
+    if (!syncActive || sessionStorage.getItem("localbridge-analytics-sync-active")) return;
+    trackEvent("clipboard_sync_active", { agent_transport: agentTransport });
+    sessionStorage.setItem("localbridge-analytics-sync-active", "1");
+  }, [agentTransport, syncActive]);
+
+  useEffect(() => {
     let mounted = true;
     const refreshDevices = async () => {
       try {
@@ -637,6 +653,7 @@ function App() {
       setState(data.state);
       setSession({ pairingId: data.pairingId, state: data.state, requesterDeviceId: selectedDeviceId });
       setMessage(t.codeCreated);
+      trackEvent("pairing_started", { agent_transport: agentTransport });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t.codeCreateError);
     }
@@ -666,6 +683,7 @@ function App() {
         responderDeviceId: selectedDeviceId,
       }));
       setMessage(t.joined);
+      trackEvent("pairing_joined", { agent_transport: agentTransport });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t.joinError);
     }
@@ -687,6 +705,7 @@ function App() {
       setState(data.state);
       setSession((current) => current ? { ...current, state: data.state, used: true } : current);
       setMessage(t.pairedDone);
+      trackEvent("pairing_completed", { agent_transport: agentTransport });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t.finishError);
     }
@@ -704,6 +723,7 @@ function App() {
       : "powershell -NoProfile -ExecutionPolicy Bypass -Command \"iwr https://ai-mongolia.netlify.app/install/windows.ps1 -UseBasicParsing | iex\"";
     await navigator.clipboard.writeText(command);
     setMessage(platform === "mac" ? t.macCommandCopied : t.windowsCommandCopied);
+    trackEvent("install_command_copied", { platform });
   };
 
   const reconnect = async () => {
@@ -758,6 +778,10 @@ function App() {
         await callAgent("/api/send-file", messageBody);
       }
       setMessage(t.fileQueued);
+      trackEvent("file_sent", {
+        file_size: file.size < 1_048_576 ? "under_1mb" : "1mb_or_more",
+        mime_group: file.type.split("/")[0] || "unknown",
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t.fileSendError);
     }
@@ -1009,12 +1033,12 @@ function App() {
           </div>
         </div>
         <div className="download-grid">
-          <a className="download-card" href="/downloads/LocalBridge-Windows.zip">
+          <a className="download-card" href="/downloads/LocalBridge-Windows.zip" onClick={() => trackEvent("agent_download", { platform: "windows" })}>
             <PlatformIcon platform="windows" size={26} />
             <strong>Windows</strong>
             <span>LocalBridge-Windows.zip</span>
           </a>
-          <a className="download-card" href="/downloads/LocalBridge-Mac.zip">
+          <a className="download-card" href="/downloads/LocalBridge-Mac.zip" onClick={() => trackEvent("agent_download", { platform: "macos" })}>
             <PlatformIcon platform="macos" size={26} />
             <strong>macOS</strong>
             <span>LocalBridge-Mac.zip</span>
