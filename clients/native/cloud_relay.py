@@ -25,7 +25,9 @@ MAX_TRANSFER_BYTES = int(os.environ.get("LOCALBRIDGE_MAX_TRANSFER_BYTES", str(8 
 OUTBOX_DIR = CONFIG_DIR / "outbox"
 DOWNLOAD_DIR = Path.home() / "Downloads" / "LocalBridge"
 IS_WINDOWS = sys.platform == "win32"
-POLL_SECONDS = 0.35
+ACTIVE_POLL_SECONDS = float(os.environ.get("LOCALBRIDGE_RELAY_ACTIVE_POLL_SECONDS", "0.75"))
+IDLE_POLL_SECONDS = float(os.environ.get("LOCALBRIDGE_RELAY_IDLE_POLL_SECONDS", "5"))
+ACTIVE_WINDOW_SECONDS = float(os.environ.get("LOCALBRIDGE_RELAY_ACTIVE_WINDOW_SECONDS", "12"))
 
 
 def log(message):
@@ -213,17 +215,20 @@ def main():
     except Exception:
         last_local = None
     last_received = None
+    active_until = 0.0
     log("LocalBridge cloud relay started")
     while True:
         try:
             flush_outbox()
-            for item in relay_poll():
+            messages = relay_poll()
+            for item in messages:
                 message = item.get("message") or {}
                 if message.get("type") == "clipboard":
                     text = str(message.get("text", ""))
                     clipboard_set(text)
                     last_received = text
                     last_local = text
+                    active_until = time.monotonic() + ACTIVE_WINDOW_SECONDS
                     log(f"Clipboard received through relay ({len(text)} chars)")
                 elif message.get("type") == "file":
                     target = save_received_file(message)
@@ -234,10 +239,12 @@ def main():
             if isinstance(current, str) and current != last_local and current != last_received:
                 if relay_send({"type": "clipboard", "text": current}):
                     last_local = current
+                    active_until = time.monotonic() + ACTIVE_WINDOW_SECONDS
                     log(f"Clipboard sent through relay ({len(current)} chars)")
         except Exception as error:
             log(f"Relay loop error: {error}")
-        time.sleep(POLL_SECONDS)
+        delay = ACTIVE_POLL_SECONDS if time.monotonic() < active_until else IDLE_POLL_SECONDS
+        time.sleep(delay)
 
 
 if __name__ == "__main__":

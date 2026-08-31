@@ -448,13 +448,19 @@ def poll_backend_once():
 
 
 def backend_poll_loop():
+    next_registration = 0.0
     while True:
         try:
-            register_with_backend()
+            now = time.monotonic()
+            if now >= next_registration:
+                register_with_backend()
+                next_registration = now + 60
             poll_backend_once()
         except Exception as exc:
             log("backend poll error: " + str(exc))
-        time.sleep(5)
+        with state_lock:
+            paired = bool(state.get("hasCredentials"))
+        time.sleep(60 if paired else 10)
 
 
 def sync_command():
